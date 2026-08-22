@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# PICO-8 generated/export artifacts (regenerable via -export)
+*.p8.png
+*_html/
+*.bin
+*.zip
