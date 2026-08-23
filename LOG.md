@@ -12,3 +12,8 @@ Local LLM:
 Starting llama.cpp with: Qwen3.8-27B-UD-Q8_K_XL
 Command: '$HOME/dev/llama.cpp/build/bin/llama-server' '-m' '$HOME/dev/localGGUF/Qwen3.8-27B-UD-Q8_K_XL.gguf' '-ngl' '999' '-t' '16' '-tb' '16' '-c' '131072' '--flash-attn' 'on' '--cache-type-k' 'q8_0' '--cache-type-v' 'q8_0' '--embeddings' '--ctx-size' '200000' '--port' '8080.0'
 ```
+
+It's figuring out the .p8 format, which isn't what I expected. I was just thinking it would write .lua files that I could then import into my pico8 and let the tooling do it's thing. I'm going to keep letting it try this approach.:wq
+After thinking for a while and asking some questions. It's going to write the code in a .lua file and include it into the p8 cart, exactly what I thought it should do.
+
+It tried to #include the game.lua file but somehow did it wrong. retyping myself and it worked fine.
