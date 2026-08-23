@@ -1,9 +1,9 @@
 pico-8 cartridge // http://www.pico-8.com
 version 43
 __lua__
--- WorkAI game demo (built with local AI only)
--- Game logic lives in game.lua -- edit that file, not this one.
-#INCLUDE game.lua
+-- workai game demo (built with local ai only)
+-- game logic lives in game.lua -- edit that file, not this one.
+#include game.lua
 __label__
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

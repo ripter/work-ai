@@ -1,6 +1,6 @@
--- game.lua -- WorkAI PICO-8 starter
--- This file is the game. game.p8 includes it via #INCLUDE game.lua.
--- Edit here. Keep to the PICO-8 API (no Lua stdlib) -- see AGENTS.md.
+-- game.lua -- workai pico-8 starter
+-- this file is the game. game.p8 includes it via #include game.lua.
+-- edit here. keep to the pico-8 api (no lua stdlib) -- see agents.md.
 
 local state = "title"
 local px, py = 64, 64
@@ -41,20 +41,20 @@ function _draw()
   cls(1)
 
   if state == "title" then
-    print("WORKAI", 52, 48, 7)
-    print("A PICO-8 DEMO", 38, 58, 6)
-    print("PRESS A TO START", 32, 72, 11)
+    print("workai", 52, 48, 7)
+    print("a pico-8 demo", 38, 58, 6)
+    print("press a to start", 32, 72, 11)
 
   elseif state == "play" then
     rect(0, 0, 127, 0, 8)
     rect(0, 127, 127, 127, 8)
     rect(px, py, px + 7, py + 7, 11)
-    print("SCORE " .. score, 4, 4, 6)
-    print("MENU TO END", 92, 120, 5)
+    print("score " .. score, 4, 4, 6)
+    print("menu to end", 92, 120, 5)
 
   elseif state == "gameover" then
-    print("GAME OVER", 40, 48, 8)
-    print("SCORE " .. score, 40, 60, 6)
-    print("PRESS A", 48, 74, 11)
+    print("game over", 40, 48, 8)
+    print("score " .. score, 40, 60, 6)
+    print("press a", 48, 74, 11)
   end
 end
