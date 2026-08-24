@@ -20,8 +20,12 @@ local models). No cloud APIs.
 ## Workflow
 
 1. Edit `game.lua` (and data sections only when adding art/sfx).
-2. Validate headlessly (see Commands). A successful `-export` proves the
-    cartridge is valid, `#include` resolves, and the code compiles.
+2. Validate headlessly (see Commands). The boot test is the real check:
+    exit 124 means the cart booted and ran the full 6 seconds; any early
+    exit means a syntax or runtime error (read stderr). `-export` only
+    proves the cart file parses — it can exit 0 even when the code
+    crashes at runtime, and a `.png` target in this build may just be a
+    spritesheet dump, not a screen capture.
 3. Open `game.p8` in PICO-8.app to playtest (PICO-8 re-includes `game.lua`
    on every run, so external edits are picked up automatically; use CTRL-R
    in the app to re-run after editing).
@@ -66,6 +70,9 @@ rm -rf "$TMP"
 - Arrays are 1-based. `foreach` starts at `t[1]`.
 - `sin()`/`cos()` take 0..1 (not 0..2PI); `sin()` is inverted.
 - `sgn(0)` returns 1.
+- `rnd(n)` returns a FLOAT in [0, n), not an integer. For a whole-number
+  roll use `ceil(rnd(n))` (gives 1..n). Comparing a raw `rnd(n)` result
+  against integers (`v == 1`) is always false.
 - CPU ~8 MHz; ~2 cycles per VM instruction. Keep `_draw` cheap; watch
   `stat(1)` for CPU load.
 - Bottom half of the sprite sheet and bottom half of the map share memory —
@@ -101,16 +108,41 @@ sprites match the palette.
 
 ## Useful API
 
-- Text: `print(s, x, y[, color])`, `txt_scale(n)`, `txt_metric(b)`
+WARNING: this installed build is MISSING many APIs that newer PICO-8
+versions have. A missing global is nil and only fails at runtime, so
+verify before using. Probed headlessly against the installed app on
+2026-08-23 (cart version 43):
+
+NOT in this build (do not use): `floor`, `exp`, `log`, `cam`, `fade`,
+`txt_scale`, `txt_metric`, `fnt`, `ellip`, `ellipfill`, `cur_sfx`,
+`cur_music`, `load_gfx`, `load_map`, `load_sfx`, `load_luad`,
+`coreyield`, `quit`, `pause`, `at`, `ovn`, `ofc`, `plt`, `crt`,
+`memsize`, `memused`, `tobin`, `frombin`, `tobase`, `frombase`, `tohex`,
+`fromhex`, `toascii`, `fromascii`, `saveslot`, `loadslot`, `savenow`,
+`loadnow`, `gmode`, `vib*`, `rdelta`, `tobinary`, `frombinary`,
+`hex2bin`, `bin2hex`, `music_frame`, `sfx_frame`, `print_r`, `_print`.
+
+Available (probed):
+- Text: `print(s, x, y[, color])` (font is 3px per char; no txt_scale /
+  txt_metric — center with `64 - (#s * 3 - #s % 2) / 2`)
 - Shapes: `rect(x0,y0,x1,y1[,c])`, `line(x0,y0,x1,y1[,c])`,
-  `circ(x,y[,c])`, `circfill(x,y,r[,c])`, `ellip`, `ellipfill`, `pset`
-- Camera/effects: `cam(x,y)`, `clip(x0,y0,x1,y1)`, `fade(n)`, `cls([c])`
-- Data/memory: `peek(a)`, `poke(a,v)`, `load(filename)`, `load_gfx`,
-  `load_map`, `load_sfx`, `load_luad`
-- Audio: `sfx([n])`, `music([n])`, `cur_sfx()`, `cur_music()`
-- Coroutines: `cocreate(f)`, `coresume(c)`, `coreyield()`, `costatus(c)`
+  `circ(x,y[,c])`, `circfill(x,y,r[,c])`, `pset`
+- Display: `cls([c])`, `clip(x0,y0,x1,y1)`, `map(...)`, `spr(...)`,
+  `pal(...)`, `fget`, `fset`, `sset`, `mget`, `mset`
+- Data/memory: `peek(a)`, `poke(a,v)`, `load(filename)`
+- Audio: `sfx([n])`, `music([n])`
+- Coroutines: `cocreate(f)`, `coresume(c)`, `costatus(c)`
 - Info: `stat(1)` cpu load, `stat(2)` fps, `time()`
-- Flow: `exit()`, `quit()`, `pause()`, `srand(n)`, `rnd([n])`
+- Flow: `exit()`, `srand(n)`, `rnd([n])`, `btn(n)`, `btnp(n)`
+- Math: `abs`, `sqrt`, `ceil`, `sin`, `cos`, `sgn` (NO `floor` — use
+  `(n - n % 2) / 2` style integer tricks for whole numbers)
+- Convert: `tostr`, `tonum` (old names; no tobase/frombase family)
+- Save: `save`, `load`
+
+To re-probe: a cart that builds a bit string with
+`r = r .. (somefunc and "1" or "0")` for each candidate and ends in
+`assert(false, "APIPROBE:" .. r)` prints the result on the boot-test
+stderr. Note: this restricted lua has NO `_G` and NO `getfenv`.
 
 ## Art pipeline (later step)
 

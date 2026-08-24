@@ -17,3 +17,29 @@ It's figuring out the .p8 format, which isn't what I expected. I was just thinki
 After thinking for a while and asking some questions. It's going to write the code in a .lua file and include it into the p8 cart, exactly what I thought it should do.
 
 It tried to #include the game.lua file but somehow did it wrong. retyping myself and it worked fine.
+
+## Step 2 - Roll Dice
+Get the AI to setup a basic dice rolling setup.
+
+Local LLM:
+
+```
+Starting llama.cpp with: Qwen3.8-27B-UD-Q6_K_XL
+Command: '$HOME/dev/llama.cpp/build/bin/llama-server' '-m' '$HOME/dev/localGGUF/Qwen3.8-27B-UD-Q6_K_XL.gguf' '-ngl' '999' '-t' '12' '-tb' '12' '--flash-attn' 'on' '--cache-type-k' 'q8_0' '--cache-type-v' 'q8_0' '--port' '8080.0'
+```
+
+This is much *much* faster than the old model and config. I dropped from Q8 to Q6 and fixed some params that where harming me.
+First round, it claims to roll the dice, it made the menu. But it doesn't visually show the dice rolling and the resulting dice value is not something you would be able to get with the dice it rolled. So lots of issues so far.
+It said the issue was that the rnd function returns floats and so fixing that would fix the other issues.
+It rolls and gives the total, everything I asked for.
+
+## Step 3 - Multiplayer
+Get the AI to setup multiplayer in the exported. Each player rolls dice, we can see all the rolls.
+
+Local LLM:
+```
+Starting llama.cpp with: Qwen3.8-27B-UD-Q6_K_XL
+Command: '$HOME/dev/llama.cpp/build/bin/llama-server' '-m' '$HOME/dev/localGGUF/Qwen3.8-27B-UD-Q6_K_XL.gguf' '-ngl' '999' '-t' '12' '-tb' '12' '--flash-attn' 'on' '--cache-type-k' 'q8_0' '--cache-type-v' 'q8_0' '--port' '8080.0'
+```
+
+
