@@ -10,3 +10,6 @@
 # pico-socket web export (regenerable via web/build.sh)
 web/game.html
 web/game.js
+
+# node dependencies (install with: cd web && npm install)
+node_modules/

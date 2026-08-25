@@ -54,7 +54,9 @@ To play: `sh web/build.sh` then `cd web && PORT=5177 npx -y pico-socket`, and
 open http://localhost:5177 in up to 4 tabs (A start, left/right pick dice,
 A join, A roll, B leave).
 
+It edited this file to add that block above. Not what I wanted but I'm leaving it in.
 Model is doing the kind of work that surprised me with Fable. It's building a theory, and then testing that theory. Because we are doing multiplayer it loaded the game in different headless chromes and then comapred if they are talking to each other like we would expect.
 Trying it, it does work.
+It installed the js library I need for pico8 networking globaly, I had it correct that.
 
 

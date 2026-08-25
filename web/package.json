@@ -1,0 +1,12 @@
+{
+  "name": "workai-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "pico-socket multiplayer server for the WorkAI PICO-8 dice game (run from this directory)",
+  "scripts": {
+    "start": "pico-socket"
+  },
+  "dependencies": {
+    "pico-socket": "^2.0.0"
+  }
+}

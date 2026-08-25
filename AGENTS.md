@@ -67,13 +67,18 @@ GPIO pins. Solo play in PICO-8.app is unchanged (GPIO is local memory there).
   CLI `-export` → `web/game.html` + `web/game.js` (both gitignored,
   regenerable). The CLI does NOT resolve `#include`, so flattening is
   required; re-run after editing `game.lua`.
+- `Makefile` — build targets: `make` / `make static` (a single self-contained
+  `web/game.html` you open in a browser, via `web/inline.js`), `make
+  multiplayer` (the `game.html`+`game.js` export for pico-socket), `make clean`.
 
 Build and serve (port 5000 is held by macOS AirPlay/ControlCenter on this
 machine — use 5177):
 
 ```sh
-sh web/build.sh
-cd web && PORT=5177 npx -y pico-socket
+make multiplayer
+cd web
+npm install        # first time only (pico-socket -> web/node_modules)
+PORT=5177 npm start
 # open http://localhost:5177 in up to 4 browser tabs/windows
 ```
 
