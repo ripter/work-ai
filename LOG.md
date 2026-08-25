@@ -42,4 +42,19 @@ Starting llama.cpp with: Qwen3.8-27B-UD-Q6_K_XL
 Command: '$HOME/dev/llama.cpp/build/bin/llama-server' '-m' '$HOME/dev/localGGUF/Qwen3.8-27B-UD-Q6_K_XL.gguf' '-ngl' '999' '-t' '12' '-tb' '12' '--flash-attn' 'on' '--cache-type-k' 'q8_0' '--cache-type-v' 'q8_0' '--port' '8080.0'
 ```
 
+Done (AI). Multiplayer is in via pico-socket: game.lua now has a 4-player
+state machine (title -> setup -> board) with a per-player dice count (3-9),
+and each player's join/roll/dice are relayed over GPIO pins. Added
+web/pico-socket.yml (the pin map) and web/build.sh (flattens game.lua and
+exports the web cart). Found and fixed a pin-offset bug (player blocks start
+at gpio+2, because pins 0/1 are room id and player id). Verified headlessly
+with two real browser tabs: both players join, roll with different dice
+counts, and each tab sees the other's exact dice/total — 22/22 checks pass.
+To play: `sh web/build.sh` then `cd web && PORT=5177 npx -y pico-socket`, and
+open http://localhost:5177 in up to 4 tabs (A start, left/right pick dice,
+A join, A roll, B leave).
+
+Model is doing the kind of work that surprised me with Fable. It's building a theory, and then testing that theory. Because we are doing multiplayer it loaded the game in different headless chromes and then comapred if they are talking to each other like we would expect.
+Trying it, it does work.
+
 

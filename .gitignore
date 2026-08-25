@@ -6,3 +6,7 @@
 *_html/
 *.bin
 *.zip
+
+# pico-socket web export (regenerable via web/build.sh)
+web/game.html
+web/game.js

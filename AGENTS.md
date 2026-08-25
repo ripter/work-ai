@@ -53,6 +53,34 @@ timeout 6 "/Applications/pico-8/PICO-8.app/Contents/MacOS/pico8" game.p8 -x -hom
 rm -rf "$TMP"
 ```
 
+## Multiplayer (pico-socket)
+
+`game.lua` supports up to 4 online players via
+[pico-socket](https://github.com/JRJurman/pico-socket): a socket.io relay of
+GPIO pins. Solo play in PICO-8.app is unchanged (GPIO is local memory there).
+
+- `web/pico-socket.yml` — pin map: room id at gpio 0, player id at gpio 1,
+  players 1-4 own 13 pins each (joined, status, count, total, dice 1-9).
+  Must stay in sync with the `ppin()` layout in `game.lua` (player blocks
+  start at gpio offset 2 because pins 0/1 are room/player id).
+- `web/build.sh` — flattens `game.lua` into a temp cart and runs the PICO-8
+  CLI `-export` → `web/game.html` + `web/game.js` (both gitignored,
+  regenerable). The CLI does NOT resolve `#include`, so flattening is
+  required; re-run after editing `game.lua`.
+
+Build and serve (port 5000 is held by macOS AirPlay/ControlCenter on this
+machine — use 5177):
+
+```sh
+sh web/build.sh
+cd web && PORT=5177 npx -y pico-socket
+# open http://localhost:5177 in up to 4 browser tabs/windows
+```
+
+Per player: A start, left/right to pick own dice count (3-9), A to join the
+room (first free slot), A to (re)roll, B to leave. The winner highlights once
+every joined player has rolled. The 5th+ tab spectates.
+
 ## PICO-8 constraints
 
 - Screen 128x128 px, 16 colors. 30 fps: `_update` then `_draw` each frame
