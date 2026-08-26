@@ -2,6 +2,7 @@
 #
 #   make              # build a single self-contained web/game.html (open in a browser)
 #   make multiplayer  # build web/game.html + web/game.js (served by pico-socket)
+#   make session      # export the current opencode session to stats/sessionN.json
 #   make clean        # remove generated web files
 
 PICO8 := /Applications/pico-8/PICO-8.app/Contents/MacOS/pico8
@@ -9,7 +10,7 @@ WEB   := web
 HTML  := $(WEB)/game.html
 JS    := $(WEB)/game.js
 
-.PHONY: all static multiplayer clean
+.PHONY: all static multiplayer session clean
 
 # default: a static, self-contained game.html you can load straight in a browser
 all: static
@@ -22,6 +23,10 @@ static: multiplayer
 # standard export (game.html references game.js) — what pico-socket serves
 multiplayer:
 	sh $(WEB)/build.sh
+
+# export the current opencode session log to stats/sessionN.json
+session:
+	sh export-session.sh
 
 clean:
 	rm -f $(HTML) $(JS)

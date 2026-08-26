@@ -16,6 +16,10 @@ local models). No cloud APIs.
 - `LOG.md` — human-maintained project log. Do not rewrite; append at most.
 - `game.p8.png` — generated flattened export (gitignored), also used to
   validate the cart.
+- `stats/` — exported opencode session logs (`session1.json`, ...), produced
+  by `export-session.sh`.
+- `export-session.sh` — exports the current session log to
+  `stats/sessionN.json` (see Commands).
 
 ## Workflow
 
@@ -51,6 +55,9 @@ luajit -e "assert(loadfile('game.lua'))"
 TMP=$(mktemp -d)
 timeout 6 "/Applications/pico-8/PICO-8.app/Contents/MacOS/pico8" game.p8 -x -home "$TMP"
 rm -rf "$TMP"
+
+# export the current opencode session log to stats/sessionN.json
+sh export-session.sh            # or: make session
 ```
 
 ## Multiplayer (pico-socket)

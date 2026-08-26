@@ -60,3 +60,16 @@ Trying it, it does work.
 It installed the js library I need for pico8 networking globaly, I had it correct that.
 
 
+## Step 4 - Testing and Cleanup
+It's time to verify and clean up the work so far. Step 3 did show multiplayer working with a server and tabs. So let's really check it and improve the process.
+Let's start with making my tasks easier.
+
+Had the AI create `make session` that will log the AI session state to the stats folder for me.
+
+Talked with the AI about how to host the multiplayer game. It suggested render.com but the site wanted a credit card and I'm not willing to give that for a free service. So it made me re-question what I'm trying to do here and what I should be focused on for the demo.
+
+Saved session 5.
+
+## Step 5 - Pico8 Or Not Pico8
+Before I can move forward I need to see if it's worth keeping to PICO8 for this demo. It adds a lot of engineering considerations and if it's not going to help the demo, then it would be better to switch to an HTML5 game.
+
