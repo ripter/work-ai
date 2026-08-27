@@ -1,15 +1,8 @@
 # macOS
 .DS_Store
 
-# PICO-8 generated/export artifacts (regenerable via -export)
-*.p8.png
-*_html/
-*.bin
-*.zip
-
-# pico-socket web export (regenerable via web/build.sh)
-web/game.html
-web/game.js
-
-# node dependencies (install with: cd web && npm install)
+# node dependencies (install with: npm install)
 node_modules/
+
+# vite production build output (regenerable via: make build)
+dist/

@@ -1,32 +1,28 @@
-# WorkAI PICO-8 dice roller — build the web export
+# WorkAI — CavePerson (HTML5/PixiJS)
 #
-#   make              # build a single self-contained web/game.html (open in a browser)
-#   make multiplayer  # build web/game.html + web/game.js (served by pico-socket)
-#   make session      # export the current opencode session to stats/sessionN.json
-#   make clean        # remove generated web files
+#   make build    # build the production static site -> dist/
+#   make start    # start the local dev server (vite)
+#   make preview  # serve the production build locally
+#   make session  # export the current opencode session to stats/sessionN.json
+#   make clean    # remove dist/
 
-PICO8 := /Applications/pico-8/PICO-8.app/Contents/MacOS/pico8
-WEB   := web
-HTML  := $(WEB)/game.html
-JS    := $(WEB)/game.js
+.PHONY: all build start preview session clean
 
-.PHONY: all static multiplayer session clean
+# default: production build
+all: build
 
-# default: a static, self-contained game.html you can load straight in a browser
-all: static
+build:
+	npm run build
 
-# single self-contained file: build the export, then inline game.js into game.html
-static: multiplayer
-	node $(WEB)/inline.js $(HTML) $(JS) $(HTML)
-	@echo "open $(HTML) in a browser to play (solo)"
+start:
+	npm run dev
 
-# standard export (game.html references game.js) — what pico-socket serves
-multiplayer:
-	sh $(WEB)/build.sh
+preview:
+	npm run preview
 
 # export the current opencode session log to stats/sessionN.json
 session:
 	sh export-session.sh
 
 clean:
-	rm -f $(HTML) $(JS)
+	rm -rf dist

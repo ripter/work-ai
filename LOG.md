@@ -113,4 +113,6 @@ Full evidence + the PICO-8 vs HTML5 call: see `REPORT.md`.
 Saved as session6.json
 
 ## Step 6 - Switch to HTML 5
+Switching to HTML instead of PICO 8
+
 
