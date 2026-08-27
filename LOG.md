@@ -114,5 +114,10 @@ Saved as session6.json
 
 ## Step 6 - Switch to HTML 5
 Switching to HTML instead of PICO 8
+got basic html5 page up and running, cleaned up old pico8.
 
+saved as session7.json
+
+## Step 7 - Core game model
+Let's start on the core game model now that the basic structure is setup.
 
