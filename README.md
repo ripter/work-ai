@@ -1,78 +1,76 @@
-# WorkAI — PICO-8 Dice Roller
+# WorkAI — Mammoth Hunt (PICO-8)
 
-A tiny [PICO-8](https://www.lexaloffle.com/pico-8.php) dice game with **online
-multiplayer for up to 4 players**. Everyone rolls their own dice (pick 3–9 of
-them) and the board shows every player's roll; the winner is highlighted once
-everyone in the room has rolled.
+A tiny [PICO-8](https://www.lexaloffle.com/pico-8.php) game: your camp and
+three rival camps hunt a shared mammoth by **rolling dice**. The first to bring
+it down gets to claim the loot it drops — **meat** (food), **tusk** (tools) and
+**hide** (food + tools).
 
 Built as a work demo of local-AI-assisted development (OpenCode + local LLMs,
-no cloud APIs).
+no cloud APIs). It is a *presentation slice* — a polished scene and a tight
+game loop, not the full game.
 
 ## How to play
 
-Solo (in PICO-8.app) or online — same controls:
-
 | Button | Action |
 |--------|--------|
-| `A` | start / join room / (re)roll |
-| `B` | back / leave room |
-| `←` / `→` | on the setup screen, pick your dice count (3–9) |
+| `A` | start · roll dice · claim the highlighted reward |
+| `←` / `→` | move the reward cursor (after the mammoth falls) |
+| `B` | reset the hunt (a new mammoth) |
+| `C` | toggle the debug readout (hp / food / tools / state) |
 
-Online: each browser tab is a player. The first 4 tabs take slots p1–p4; a
-5th+ tab spectates.
+You roll 4 dice; the three rival camps roll 3 each on a timer. Whoever lands the
+blow that drops the mammoth leaves three reward slots to claim. Claim all three
+and a new mammoth approaches.
 
 ## Requirements
 
 - **macOS** with PICO-8 0.2.7 at `/Applications/pico-8/PICO-8.app`
   (`web/build.sh` calls its CLI; edit the `PICO8=` line if yours is elsewhere).
-- **Node.js + npm** (the build inlines the lua with `node`; the multiplayer
-  server, `pico-socket`, is installed locally via `web/package.json`).
-- A modern web browser (for multiplayer).
+- **Node.js + npm** (only for the web build, which inlines the lua with `node`).
+- A modern web browser (for the static web build).
 
 ## Run — single player (PICO-8 app)
 
 1. Open `game.p8` in PICO-8.app.
 2. Press **RUN** (the top-bar button, or `F5`).
 
-`game.p8` is just a cart that `#include`s `game.lua`, so edit `game.lua` and
-press `CTRL-R` in the app to re-run — no rebuild needed for solo play.
+`game.p8` is a cart that `#include`s `game.lua`, so edit `game.lua` and press
+`CTRL-R` in the app to re-run — no rebuild needed for solo play.
 
 ## Run — static build (single file, in a browser)
 
-Build one self-contained `web/game.html` and open it directly in a browser —
-no server, solo play:
+Build one self-contained `web/game.html` and open it directly — no server:
 
 ```sh
 make              # default target (= make static)
 open web/game.html
 ```
 
-`make` inlines `game.js` into `game.html` (as a `data:` URI) so the result is a
-single file you can open from disk or share.
+`make` inlines `game.js` into `game.html` (a `data:` URI) → one file you can
+open from disk or share.
 
-## Run — online multiplayer (2–4 players)
+## Art pipeline
+
+The sprites, map and sfx are **generated, not hand-drawn in the editor**.
+`tools/artgen.py` authors the art as palette-index grids in Python and splices
+the `__gfx__`, `__map__` and `__sfx__` sections into `game.p8` (idempotently):
 
 ```sh
-# 1. build the web export (game.html + game.js) from game.p8 + game.lua
-make multiplayer
-
-# 2. install deps (first time only), then serve with pico-socket
-cd web
-npm install
-PORT=5177 npm start
+python3 tools/artgen.py            # splice art + sfx into game.p8
+python3 tools/artgen.py --preview  # write preview.p8 (art + a static _draw)
 ```
 
-`npm start` runs the locally-installed `pico-socket` (a socket.io relay of the
-game's GPIO pins) from `web/`, where it finds `pico-socket.yml` and the game
-HTML. Then open **http://localhost:5177** in up to 4 browser tabs/windows —
-each tab boots its own copy of the game and the tabs sync their dice.
+Re-run it after changing the art. The PICO-8 CLI does not resolve `#include`,
+so `game.p8`'s lua section stays a pointer to `game.lua`.
 
-Notes:
-- `pico-socket` defaults to port 5000, which macOS AirPlay/Control Center
-  already holds — hence `PORT=5177`. Use any free port the same way.
-- Re-run `make multiplayer` (or `make`) after editing `game.lua` (the web
-  export is a flattened snapshot; the PICO-8 CLI does not resolve `#include`).
-- `make clean` removes the generated `web/game.html` / `web/game.js`.
+## Multiplayer (dice-roller prototype, step 3)
+
+The earlier dice-roller prototype had 4-player online play via
+[pico-socket](https://github.com/JRJurman/pico-socket) (a socket.io relay of
+GPIO pins). The current mammoth-hunt `game.lua` is single-player (the rival
+camps are local bots) and does **not** read the gpio pins, so
+`web/pico-socket.yml` is vestigial for this slice. `make multiplayer` still
+builds and serves the game in multiple independent tabs if you want that.
 
 ## How the build works
 
@@ -84,29 +82,23 @@ The `Makefile` drives the build:
 - `make static` (the default) does that, then `web/inline.js` embeds
   `game.js` into `game.html` as a `data:` URI → one self-contained file.
 
-`pico-socket` then serves `web/game.html` and injects a small client that
-relays a fixed set of GPIO pins between tabs:
-
-- gpio `0` = room id, `1` = player id (which slot this tab is).
-- Each player p owns 13 pins at offset `2 + (p-1)*13`: joined, status,
-  dice count, total, and the individual dice.
-
-The pin map in `web/pico-socket.yml` must stay in sync with the `ppin()`
-layout in `game.lua`. Generated `web/game.html` / `web/game.js` are
-gitignored and regenerated by the build.
+Generated `web/game.html` / `web/game.js` are gitignored and regenerated by the
+build. Re-run `make` after editing `game.lua` or `tools/artgen.py`.
 
 ## Project layout
 
 ```
-Makefile           build targets: `make` (static file), `make multiplayer`, `make clean`
-game.p8            cart container (its lua section is just `#include game.lua`)
+Makefile           build targets: `make` (static file), `make multiplayer`,
+                   `make session`, `make clean`
+game.p8            cart container (lua = `#include game.lua`; art + sfx spliced)
 game.lua           the actual game (edit here)
+tools/artgen.py    generates the gfx/map/sfx art and splices it into game.p8
+preview.p8         standalone preview cart (art + a static _draw)
 web/build.sh       build the web export (flattens game.lua, runs PICO-8 CLI)
 web/inline.js      inline game.js into game.html (single-file static build)
-web/package.json   deps for the multiplayer server (pico-socket)
-web/package-lock.json  locked deps (commit it; `cd web && npm install`)
-web/pico-socket.yml  GPIO pin map for the multiplayer relay
-web/node_modules/  installed deps (gitignored)
+web/pico-socket.yml  GPIO pin map (vestigial for the hunt slice; see above)
+export-session.sh  export the current opencode session to stats/sessionN.json
+stats/             exported session logs (session1.json, ...)
 LOG.md             human project log
 AGENTS.md          dev notes: PICO-8 constraints, API availability, workflow
 ```
@@ -125,4 +117,4 @@ rm -rf "$TMP"
 ```
 
 See `AGENTS.md` for the PICO-8 API quirks in this build and the full
-multiplayer/verification workflow.
+verification workflow.

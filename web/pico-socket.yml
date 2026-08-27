@@ -1,4 +1,7 @@
-# pico-socket config -- matches the gpio layout in game.lua
+# pico-socket config -- from the dice-roller prototype (step 3).
+# NOTE: the current mammoth-hunt game.lua is single-player (local bots) and
+# does not read these gpio pins, so this map is vestigial for the hunt slice.
+# Kept so `make multiplayer` still serves the game in multiple tabs.
 roomIdIndex: 0
 playerIdIndex: 1
 playerDataIndicies:
