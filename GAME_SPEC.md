@@ -50,9 +50,20 @@ Possible claim-order rules include things such as:
 * lowest die
 * highest roll total
 
-The claim order is calculated once when the Event begins.
+The claim order is calculated once, after all tribes have locked their dice
+(i.e. at the start of the claiming phase, using the final post-reroll dice).
 
 It does not change during that Event, even after dice are spent.
+
+Ties in the ordering value are broken by seat number: the lower seat index
+claims first.
+
+## Event deck
+
+Event Cards are drawn from a deck, one per Event.
+
+The deck is shuffled (Fisher-Yates) before the first draw, and reshuffled and
+re-dealt whenever it is exhausted, so a game can run for many Events.
 
 ## Dice
 
@@ -73,7 +84,8 @@ Spending 1 Tool allows one Yahtzee-style reroll.
 During that reroll:
 
 * the player may keep any number of dice
-* the player may reroll any number of the remaining dice
+* the player must reroll at least 1 of the remaining dice (a reroll of zero
+  dice is not allowed)
 * the entire reroll costs exactly 1 Tool regardless of how many dice are
   rerolled
 
@@ -99,6 +111,17 @@ Once the slot is successfully claimed:
 Players continue cycling through claim order as long as they can still claim
 available slots.
 
+A player may voluntarily pass on their turn. A passed tribe is out of the
+claiming loop for the rest of that Event.
+
+A tribe whose turn arrives with no legal claim available (no unclaimed slot it
+can satisfy with its remaining dice) is automatically out of the loop for the
+rest of that Event. Because dice and open slots only decrease during an Event,
+legality can only shrink, so a tribe that is out stays out.
+
+The claiming phase ends when every surviving tribe is out of the loop (passed,
+auto-out, or no dice left).
+
 ## Slot requirements
 
 Requirements are intentionally flexible.
@@ -109,7 +132,8 @@ They may include traditional combinations such as:
 * three of a kind
 * four of a kind
 * full house
-* straight
+* straight (exactly 5 dice of 5 consecutive distinct values, e.g. 1-2-3-4-5 or
+  2-3-4-5-6)
 
 They may also include requirements such as:
 
@@ -176,6 +200,14 @@ Rare difficult slots may also have hostile effects such as:
 These should be difficult enough that they are unlikely to occur early in the
 game and become more achievable as tribes grow.
 
+A hostile effect always targets another tribe — the claimer can never target
+themself. A kill may not reduce a target below 0 Population, and a steal may
+not take a Tool a tribe does not have; targets that cannot legally receive the
+effect are not valid targets.
+
+If a hostile reward resolves with no valid target left, it fizzles: the claim
+still stands and the dice are still spent, but the effect does nothing.
+
 ## Reward timing
 
 Rewards are **not** granted immediately when a slot is claimed.
@@ -186,9 +218,15 @@ After the Event claiming phase is completely finished, rewards resolve.
 
 Reward resolution order is the exact order in which slots were claimed.
 
+If a claimer has been eliminated by the time their queued reward resolves
+(e.g. an earlier hostile kill in the same reward phase), that reward is
+voided and has no effect.
+
 After all rewards resolve, Night begins.
 
 ## Night
+
+Night resolves one tribe at a time, in seat order (lowest seat first).
 
 Each Population requires 1 Food.
 
@@ -213,3 +251,45 @@ A tribe may buy as much Population as it can afford.
 ## Victory
 
 The last tribe with Population remaining wins.
+
+Victory is checked at the end of each Night (after all surviving tribes have
+finished feeding and growing):
+
+* exactly one tribe left -> that tribe wins, the game ends
+* no tribes left (e.g. the final tribes all starve on the same Night) -> the
+  game ends in a draw, with no winner
+* two or more tribes left -> the next Event begins
+
+## Starting values
+
+Every tribe starts the game with:
+
+* 3 Population
+* 4 Food
+* 1 Tool
+
+## Prototype assumptions (Prompt 2)
+
+The following are implementation details of the current prototype, not core
+design rules. They exist to keep the prototype simple and testable and may
+change as the game is playtested:
+
+* **Dice-subset search cap.** When a tribe's dice pool is large (more than 16
+  dice), the legal-subset search is capped so it cannot enumerate every
+  combination. This keeps claiming responsive; it only matters at very high
+  Population.
+* **AI behavior.** AI opponents use simple transparent heuristics (keep a
+  strong anchor pattern when rerolling; pick the highest-scoring legal claim,
+  weighted toward Food when starving; target the strongest tribe with hostile
+  effects; grow while it can afford it). They are intentionally weak and
+  readable, not optimal.
+* **AI pacing.** AI decisions are delayed ~600 ms in the UI so a human can
+  follow the game. The game core itself has no timing.
+* **Debug UI.** The prototype UI is a functional debug layout (dice, slots,
+  tribe panels, action buttons, log). It is not the final drag-and-drop
+  interaction described in "Slot interaction".
+* **Debug hooks.** The page exposes `window.__cp = { game, scene }` for
+  inspection/testing, and `?autoplay=N` (N = 1..3) auto-starts a game with N
+  AI opponents. Both are development aids and may be removed later.
+* **Canvas.** The game renders to a fixed 960x640 canvas, centered and scaled
+  to fit the window.

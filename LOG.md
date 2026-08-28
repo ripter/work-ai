@@ -121,3 +121,9 @@ saved as session7.json
 ## Step 7 - Core game model
 Let's start on the core game model now that the basic structure is setup.
 
+The AI did the basic Game Loop. It's ugly but that's ok becase we are trying to test the core loop and this does that. I think the values are not varied enough. The whole game I was just picking whatever gave me the most food. Some of the slots are easy to cheese because they are like, "all odd dice" well I can give it a single odd dice and that matches. I think each slot will need to take a specific number of dice and the rewards for food should be bigger. It's going to take some fine tuning but this did prove the core loop.
+
+
+Saved as Session 7.json.
+
+
