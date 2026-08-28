@@ -217,7 +217,160 @@ shasum LOG.md stats/*.json    # all hashes unchanged
 - All "Prototype assumptions (Prompt 2)" listed in `GAME_SPEC.md` (subset cap
   >16 dice, ~600ms AI pacing, `window.__cp` / `?autoplay` debug hooks, fixed
   960x640 canvas) are development aids that may change.
-- The dev server, preview server, and headless Chrome were run in the
-  background for verification; they are not part of the deliverable.
-- Nothing was committed; the working tree contains Prompt 2, ready for the
-  maintainer to review and commit.
+ - The dev server, preview server, and headless Chrome were run in the
+   background for verification; they are not part of the deliverable.
+ - Nothing was committed; the working tree contains Prompt 2, ready for the
+   maintainer to review and commit.
+
+---
+
+## 2026-08-28 — Prompt 3: first playtest revision (diceRequired, slot
+availability states, free rerolls, first economy tuning pass)
+
+**What happened.** The maintainer manually playtested the Prompt 2 build and
+reported three problems: (1) slot requirements do not consistently require a
+specific number of dice, so requirements can be cheesed (e.g. one odd die
+claiming a "3 odd dice" slot); (2) Food was so obviously valuable that the
+best play was always "take the biggest Food"; (3) all normal Yahtzee-style
+reroll manipulation required spending Tools. This session fixed all three
+while preserving the working core loop, plus a conservative first economy
+tuning pass on the 5 prototype cards.
+
+**Changes made.**
+- `src/game/config.js` — new `FREE_REROLLS_PER_EVENT = 2` (prototype balance
+  value, centralized for later tuning).
+- `src/game/rules.js`
+  - New `slotDiceRequired(slotDef)` (throws if missing/invalid) and
+    `checkSlot` now enforces `values.length === diceRequired` in addition to
+    the requirement array. `describeSlot` now prefixes `[N dice]`.
+  - `findLegalSubsets` gained an `exactSize` parameter (search only subsets
+    of exactly that size, pruned at that depth); `legalSubsetsForSlot` passes
+    the slot's `diceRequired` and fast-returns `[]` when the pool is too
+    small. This is also what makes AI treat over-sized slots as impossible
+    (no legal subset exists).
+  - Pre-existing bug fix: the DFS early-returned on `found.length > 0` even
+    when `first=false`, so "find all subsets" never returned more than one
+    (the AI's multi-subset scoring was dead code). Now short-circuits only
+    when `first=true`.
+  - Shortened a few requirement descriptions (`Full house (3+2)`,
+    `Straight (5 in a row)`, middleIs) — display-only, since the `[N dice]`
+    prefix now carries the count.
+- `src/game/game.js`
+  - `startEvent` gives every surviving tribe `FREE_REROLLS_PER_EVENT` free
+    rerolls each Event (unused ones never carry over; eliminated tribes get
+    0). The initial roll consumes nothing.
+  - `doReroll` consumes a free reroll first, then 1 Tool; distinct log lines
+    ("uses a free reroll (N left)" vs "spends 1 Tool (N left)"); throws when
+    neither remains. Cost is independent of how many dice are rerolled.
+  - `submitClaim` throws a clear count error (`"X" requires exactly N dice
+    (you submitted M)`) before the requirement check.
+- `src/game/ai.js` — `aiRerollDecision` affordability check is now
+  `freeRerolls > 0 || tools >= 1` (was `tools >= 1`). The anchor heuristic is
+  otherwise unchanged, so the AI spends its 2 free rerolls before Tools and
+  can never spend a Tool while free rerolls remain.
+- `src/data/events.js` — every slot now explicitly declares `diceRequired`
+  (never inferred from the requirement), plus the first economy tuning pass
+  (see below).
+- `src/ui/gameScene.js`
+  - Slots render in three states during claiming (human's perspective,
+    recomputed every render): `impossible` (needs more dice than left — very
+    dark bg `#120e1e`, dim gray text, tag `[needs N dice, you have M]`),
+    `no-match` (enough dice, no current combination — normal bg, tag
+    `[no match with your dice]`, dim reward), `available` (legal claim
+    exists — pickable highlight on the human's turn). Both disabled states
+    keep the slot/requirement/reward fully visible and are not clickable.
+  - Reroll button label reflects the cost: `Reroll selected (N die) — free,
+    X left` / `— costs 1 Tool` / `— no rerolls left`; enabled only when a
+    reroll is affordable and a die is selected.
+  - Tribe stat line shows `N free rerolls left` during the reroll phase.
+- `src/ui/debugUi.js` — setup help text updated (free rerolls, exact dice
+  counts, dimmed slots).
+- `GAME_SPEC.md` — "Tools and rerolls" rewritten as "Rerolls and Tools"
+  (initial roll free; 2 configurable free rerolls per Event, prototype value;
+  free rerolls reset each Event, never carry over; Tool cost after free
+  rerolls); new "Required dice count" subsection under Slot requirements
+  (explicit `diceRequired`, both checks enforced, high-dice slots
+  intentionally visible-but-unavailable); Prototype assumptions renamed
+  (Prompts 2–3) and updated.
+
+**Event Card / economy adjustments (first conservative pass, NOT final
+balance).**
+- Mammoth Hunt (food-heavy): Food 2/3/4 (1–2 dice), 6/8 (3 dice), 9 (5-die
+  straight), 10 (4-die four-kind). Modest accessible rewards plus
+  high-dice/high-payoff rewards.
+- Rock Quarry (tool-heavy): Tools 1/1/2/2→3/3, **no Food at all** — tribes
+  that failed to save Food feel this card.
+- Trading Post (mixed): Food 3/4, Tools 1/2, mixed Food 3 + Tools 1, and a
+  rare 4-die four-kind Population 1 (inaccessible at Pop 3).
+- Shaman's Rite (transforms): easy 1–3 die requirements on big transforms
+  (2 Tools→6 Food on a pair; 4 Food→2 Tools on three-kind), plus a 4-die
+  four-kind Population 1.
+- Ambush (dangerous): Food 2/3/6, Steal 1 Tool on 3-die three-kind, Kill 1
+  Pop on a 5-die full house (intentionally unclaimable by starting Pop-3
+  tribes — a late-game opportunity visible from Event 1), Food 7 on 4-die
+  four-kind.
+- General shape: small (1–2 dice) < mid (3 dice) < large (4–5 dice) rewards,
+  so a hard slot consuming many dice can substantially outpay an easy one.
+
+**Testing.**
+- `tests/requirements.test.js` — 10 new tests: every prototype slot has an
+  explicit `diceRequired`; fewer/more dice fail; exact count + valid
+  condition passes; all-odd can't be cheesed with 1 die; sum and pattern
+  requirements respect `diceRequired`; `checkSlot` throws on missing/invalid
+  `diceRequired`; over-sized slots have no legal subsets; a 5-dice slot
+  coexists on a card a 3-die tribe cannot claim (and a 5-die tribe can).
+- `tests/game.test.js` — SLOT helper now takes `diceRequired`; reroll tests
+  rewritten for the free-first economy; 6 new tests: initial roll consumes
+  no reroll; every tribe (human + all AI) starts with the configured free
+  rerolls; free rerolls reset each Event and don't carry over; `submitClaim`
+  rejects fewer AND more dice; an Event whose only slot needs 5 dice
+  proceeds to Night normally; the AI completes the reroll phase and never
+  spends a Tool while free rerolls remain.
+- `tests/fullgame.test.js` — inline cards got `diceRequired`; the seed-42
+  fixture was re-picked to seed 2 (see failures below).
+- Result: **63/63 tests pass** (was 47/47 before the revision).
+
+**Commands run.**
+```sh
+npm test                          # 47/47 baseline, 63/63 after
+make build                        # vite build -> dist/ (relative ./assets)
+node scripts/simulate.mjs 1|2|3   # full AI games: >=3 events, eliminations,
+                                  # single winner (all PASS)
+make start + curl :5173           # 200 for /, main.js, gameScene.js, events.js
+node /tmp/cp-ui-test.mjs          # headless-Chrome CDP: real mouse clicks
+                                  # (select dice, free reroll, finish), full
+                                  # game to a winner, 4 screenshots, zero page
+                                  # console/exception errors
+node /tmp/pixel-check.mjs         # screenshot pixel analysis: 3 distinct slot
+                                  # state colors confirmed (#2e2552 pickable,
+                                  # #1f1839 no-match, #120e1e impossible)
+shasum LOG.md stats/*.json        # before/after identical
+```
+
+**Failures / fixes.**
+- Full-AI seed-42 game now ends in a DRAW (both tribes starve on the same
+  Night at Event 11) under the new economy — a legitimate outcome, not a
+  crash. Re-picked the fixture seed to 2 (11-event game, decisive winner).
+- Pre-existing `findLegalSubsets` bug (short-circuited even with
+  `first=false`): fixed; the "finds all satisfying subsets" unit test now
+  asserts the correct full result (`[5,5]` AND `[5,5,1]` for a pair check).
+- CDP test script issues (test-only, not product): (a) injecting a claiming
+  state without initializing `turnPos` crashed `advanceTurn` with NaN index —
+  fixed by initializing the full claiming state; (b) driving the human seat
+  through the Game API without kicking `scene.pump()` stalled the AI — fixed
+  by pumping after each action, exactly as the real UI does.
+
+**Assumptions.**
+- The reward values above are a deliberate first pass; the maintainer will
+  playtest before further balance decisions. `FREE_REROLLS_PER_EVENT = 2` is
+  the same kind of prototype value.
+- In the debug UI, both impossible-dice and no-match slots are non-clickable
+  (prevents error spam); they are distinguished by background color and tag
+  text, per the spec.
+- AI change was intentionally minimal (affordability check only); the
+  heuristic remains simple and transparent.
+- `LOG.md` already contained the maintainer's own uncommitted "Step 7.1"
+  note before this session; it (and all `stats/*.json`) were verified
+  untouched via shasum.
+- Nothing was committed; the working tree contains Prompt 3, ready for the
+  maintainer to review, playtest, and commit.

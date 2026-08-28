@@ -126,4 +126,10 @@ The AI did the basic Game Loop. It's ugly but that's ok becase we are trying to 
 
 Saved as Session 7.json.
 
+## Step 7.1 - Refine Core Loop
+Let's make a couple of changes to the core loop so we can try and improve the game loop before we continue.
+
+This is a lot more fun to play than the previous version. I don't feel like I'm struggling just to get enough food. I even increased my population once and the AI did it twice. There still seems to be some issues with showing what is avialable after the first pick, but that might just be a human error.
+
+Saved as Session 9.json
 

@@ -29,15 +29,16 @@ function rollValue(values) {
 }
 
 // Reroll heuristic:
-// - strong roll (4-kind, full house, straight): finish, keep Tools.
-// - otherwise, while Tools remain and the roll is not strong: keep the
-//   best anchor (the most common value, if at least a pair) plus any
-//   duplicate of the second-most common value, reroll everything else.
-// - at most one reroll per "anchor level" is needed; the loop naturally
-//   stops when the roll is strong or no dice are worth rerolling.
+// - strong roll (4-kind, full house, straight): finish, keep resources.
+// - otherwise, while a reroll is affordable (free reroll first, then
+//   Tools) and the roll is not strong: keep the best anchor (the most
+//   common value, if at least a pair) plus any duplicate of the
+//   second-most common value, reroll everything else.
+// - the loop naturally stops when the roll is strong, no dice are worth
+//   rerolling, or no rerolls (free or paid) remain.
 export function aiRerollDecision(game, tribe) {
   const values = tribe.dice.map((d) => d.value);
-  if (tribe.tools < 1) return { action: "finish" };
+  if (tribe.freeRerolls < 1 && tribe.tools < 1) return { action: "finish" };
   if (rollValue(values) >= 3) return { action: "finish" };
 
   const counts = countByValue(values);

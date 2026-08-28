@@ -58,7 +58,7 @@ const REQUIREMENTS = {
           ca >= 3 && entries.some(([b, cb]) => b !== a && cb >= 2)
       );
     },
-    describe: () => "Full house (3 of one value + 2 of another)",
+    describe: () => "Full house (3+2)",
   },
   // Prototype definition: exactly 5 dice, all distinct, consecutive
   // (1-2-3-4-5 or 2-3-4-5-6).
@@ -67,7 +67,7 @@ const REQUIREMENTS = {
       v.length === 5 &&
       new Set(v).size === 5 &&
       Math.max(...v) - Math.min(...v) === 4,
-    describe: () => "Straight (5 consecutive dice)",
+    describe: () => "Straight (5 in a row)",
   },
   exactSum: {
     check: (v, r) => sum(v) === r.value,
@@ -107,10 +107,11 @@ const REQUIREMENTS = {
   },
   // Unusual pattern: exactly `count` dice submitted; after sorting, the
   // middle die (index count/2) must equal `value`; others may be anything.
+  // (count should match the slot's diceRequired.)
   middleIs: {
     check: (v, r) =>
       v.length === r.count && sortedAsc(v)[Math.floor(r.count / 2)] === r.value,
-    describe: (r) => `Exactly ${r.count} dice, middle die must be ${r.value}`,
+    describe: (r) => `Middle die must be ${r.value}`,
   },
 };
 
@@ -120,12 +121,32 @@ export function checkRequirement(values, req) {
   return entry.check(values, req);
 }
 
+// Every slot explicitly declares `diceRequired`: the EXACT number of dice
+// that must be submitted. Both checks must pass:
+//   1. values.length === slotDef.diceRequired
+//   2. all requirements hold over exactly those dice
+// A requirement can therefore never be satisfied with fewer (or more) dice
+// than the slot specifies — e.g. a single odd die cannot claim a 3-die
+// all-odd slot.
+export function slotDiceRequired(slotDef) {
+  const n = slotDef.diceRequired;
+  if (!Number.isInteger(n) || n < 1)
+    throw new Error(
+      `Slot "${slotDef.id ?? "?"}" must declare an integer diceRequired >= 1 (got ${n})`
+    );
+  return n;
+}
+
 export function checkSlot(values, slotDef) {
+  if (values.length !== slotDiceRequired(slotDef)) return false;
   return slotDef.requirement.every((r) => checkRequirement(values, r));
 }
 
 export function describeSlot(slotDef) {
-  return slotDef.requirement.map((r) => REQUIREMENTS[r.type].describe(r)).join(" AND ");
+  return (
+    `[${slotDiceRequired(slotDef)} dice] ` +
+    slotDef.requirement.map((r) => REQUIREMENTS[r.type].describe(r)).join(" AND ")
+  );
 }
 
 export function describeReward(reward) {
@@ -160,18 +181,33 @@ export const LARGE_POOL_THRESHOLD = 16;
 export const LARGE_POOL_SUBSET_CAP = 6;
 
 // values: number[]; check: (values) => bool. Returns arrays of indices.
-export function findLegalSubsets(values, check, cap = Infinity, first = false) {
+// `cap` bounds subset size. `exactSize`, when set, restricts the search to
+// subsets of EXACTLY that size and prunes the search at that depth (used to
+// enforce a slot's diceRequired). `first=true` short-circuits after the
+// first match; `first=false` collects every match.
+export function findLegalSubsets(
+  values,
+  check,
+  cap = Infinity,
+  first = false,
+  exactSize = null
+) {
   const n = values.length;
   const found = [];
   const idx = [];
   const vals = [];
   const dfs = (i) => {
-    if (i >= n || found.length > 0) return; // found.length>0: short-circuit for `first`
+    if (i >= n || (first && found.length > 0)) return;
     // branch 1: include i
     idx.push(i);
     vals.push(values[i]);
-    if (vals.length <= cap && check(vals)) found.push(idx.slice());
-    if (idx.length < cap) dfs(i + 1);
+    if (exactSize === null) {
+      if (check(vals)) found.push(idx.slice());
+      if (idx.length < cap) dfs(i + 1);
+    } else {
+      if (vals.length === exactSize && check(vals)) found.push(idx.slice());
+      if (idx.length < exactSize) dfs(i + 1);
+    }
     idx.pop();
     vals.pop();
     // branch 2: exclude i
@@ -185,15 +221,21 @@ export function subsetCapForPool(poolSize) {
   return poolSize > LARGE_POOL_THRESHOLD ? LARGE_POOL_SUBSET_CAP : poolSize;
 }
 
-// pool: [{id, value}], slotDef: {requirement: [...]}.
-// Returns arrays of die objects (from the pool) that satisfy the slot.
+// pool: [{id, value}], slotDef: {diceRequired, requirement: [...]}.
+// Returns arrays of die objects (from the pool) that satisfy the slot —
+// i.e. exactly slotDef.diceRequired dice meeting the requirement. A slot
+// requiring more dice than the pool holds has no legal subset (it is
+// currently impossible for this tribe).
 export function legalSubsetsForSlot(pool, slotDef, { first = false } = {}) {
+  const need = slotDiceRequired(slotDef);
+  if (need > pool.length) return [];
   const check = (vals) => checkSlot(vals, slotDef);
   const subsets = findLegalSubsets(
     pool.map((d) => d.value),
     check,
     subsetCapForPool(pool.length),
-    first
+    first,
+    need
   );
   return subsets.map((ixs) => ixs.map((i) => pool[i]));
 }

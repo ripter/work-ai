@@ -7,6 +7,11 @@ export const START = Object.freeze({
   tools: 1,
 });
 
+// Free rerolls every tribe receives at the start of each Event.
+// Prototype balance value (Prompt 3, first playtest) — may change after
+// further playtesting. Once these are exhausted, each reroll costs 1 Tool.
+export const FREE_REROLLS_PER_EVENT = 2;
+
 // Night growth: 2 Food -> +1 Population. No per-Night limit.
 export const GROWTH_FOOD_COST = 2;
 

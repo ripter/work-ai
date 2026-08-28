@@ -1,4 +1,5 @@
-// Core game model checks (Prompt 2 testing list, items 1-22).
+// Core game model checks (Prompt 2 testing list, items 1-22) plus the
+// Prompt 3 revision: explicit diceRequired on every slot and free rerolls.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,10 +11,17 @@ import {
   applyGrowth,
   applyReward,
 } from "../src/game/rules.js";
-import { makeRng, scriptedGame } from "./helpers.js";
+import { FREE_REROLLS_PER_EVENT } from "../src/game/config.js";
+import { makeRng, scriptedGame, runAiTurn } from "./helpers.js";
 
 const CARD = (id, orderRule, slots) => ({ id, name: id, orderRule, slots });
-const SLOT = (id, requirement, reward) => ({ id, name: id, requirement, reward });
+const SLOT = (id, diceRequired, requirement, reward) => ({
+  id,
+  name: id,
+  diceRequired,
+  requirement,
+  reward,
+});
 
 // 1. Population determines starting dice count.
 test("1: population determines starting dice count", () => {
@@ -32,35 +40,46 @@ test("1: population determines starting dice count", () => {
   assert.equal(game.tribes[1].dice.length, 3);
 });
 
-// 2. One Tool enables exactly one reroll action and is consumed.
-test("2: one tool enables exactly one reroll and is consumed", () => {
+// 2. Free rerolls are consumed first; only then does a reroll cost a Tool.
+test("2: free rerolls are used before tools, then one tool per reroll", () => {
   const game = scriptedGame({ aiCount: 1, rolls: [[3, 3, 3], [2, 2, 2]] });
   const t = game.tribes[0];
+  assert.equal(t.freeRerolls, FREE_REROLLS_PER_EVENT);
   assert.equal(t.tools, 1);
   const [d1, d2] = t.dice.map((d) => d.id);
-  game.doReroll(0, [d1]);
+  game.doReroll(0, [d1]); // free reroll #1
+  assert.equal(t.freeRerolls, FREE_REROLLS_PER_EVENT - 1);
+  assert.equal(t.tools, 1); // Tool untouched
+  game.doReroll(0, [d2]); // free reroll #2
+  assert.equal(t.freeRerolls, 0);
+  assert.equal(t.tools, 1); // Tool untouched
+  game.doReroll(0, [d1]); // free rerolls exhausted -> costs 1 Tool
   assert.equal(t.tools, 0);
   assert.equal(game.awaiting.type, "reroll");
   assert.equal(game.awaiting.tribeId, 0);
-  assert.throws(() => game.doReroll(0, [d2])); // no tools left
+  assert.throws(() => game.doReroll(0, [d2])); // no free rerolls or Tools left
   game.finishReroll(0);
 });
 
-// 3. A Tool reroll can reroll any subset of dice.
+// 3. A reroll (free or Tool) can reroll any subset of dice.
 test("3: reroll can reroll any subset of dice", () => {
   const game = scriptedGame({ aiCount: 1, rolls: [[1, 2, 3], [4, 5, 6]] });
   const t = game.tribes[0];
-  t.tools = 3; // test-only: enough tools for all cases
+  t.tools = 3; // test-only: enough budget for all cases
   const [a, b, c] = t.dice.map((d) => d.id);
 
   assert.throws(() => game.doReroll(0, [])); // must reroll >= 1 die
   assert.throws(() => game.doReroll(0, [99999])); // die not in pool
 
-  game.doReroll(0, [b]); // single die
+  game.doReroll(0, [b]); // single die (free)
+  assert.equal(t.freeRerolls, FREE_REROLLS_PER_EVENT - 1);
   assert.equal(t.dice[0].value, 1); // untouched dice keep values
   assert.equal(t.dice[2].value, 3);
-  game.doReroll(0, [a, c]); // two dice
-  game.doReroll(0, [a, b, c]); // all dice
+  game.doReroll(0, [a, c]); // two dice (free)
+  assert.equal(t.freeRerolls, 0);
+  assert.equal(t.tools, 3); // free rerolls do not consume Tools
+  game.doReroll(0, [a, b, c]); // all dice (costs 1 Tool)
+  assert.equal(t.tools, 2);
   game.finishReroll(0);
 });
 
@@ -70,8 +89,8 @@ test("4: claim order is fixed for the whole event", () => {
     "t4",
     "highestTotal",
     [
-      SLOT("s1", [{ type: "pair" }], { food: 1 }),
-      SLOT("s2", [{ type: "sumAtMost", value: 9 }], { food: 1 }),
+      SLOT("s1", 2, [{ type: "pair" }], { food: 1 }),
+      SLOT("s2", 1, [{ type: "sumAtMost", value: 9 }], { food: 1 }),
     ]
   );
   const game = scriptedGame({
@@ -96,7 +115,7 @@ test("4: claim order is fixed for the whole event", () => {
 
 // 5. Selected dice are correctly validated against requirements.
 test("5: selected dice are validated against the slot requirement", () => {
-  const card = CARD("t5", "highestDie", [SLOT("s1", [{ type: "pair" }], { food: 1 })]);
+  const card = CARD("t5", "highestDie", [SLOT("s1", 2, [{ type: "pair" }], { food: 1 })]);
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[5, 5, 1], [2, 3, 4]] });
   game.finishReroll(0);
   game.finishReroll(1);
@@ -111,7 +130,7 @@ test("5: selected dice are validated against the slot requirement", () => {
 
 // 6. Claimed dice are removed from the pool.
 test("6: claimed dice are removed from the tribe's pool", () => {
-  const card = CARD("t6", "highestDie", [SLOT("s1", [{ type: "pair" }], { food: 1 })]);
+  const card = CARD("t6", "highestDie", [SLOT("s1", 2, [{ type: "pair" }], { food: 1 })]);
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[5, 5, 1], [2, 3, 4]] });
   game.finishReroll(0);
   game.finishReroll(1);
@@ -128,8 +147,8 @@ test("7: a claimed slot cannot be claimed again", () => {
     "t7",
     "highestDie",
     [
-      SLOT("s1", [{ type: "sumAtMost", value: 9 }], { food: 1 }),
-      SLOT("s2", [{ type: "pair" }], { food: 1 }),
+      SLOT("s1", 1, [{ type: "sumAtMost", value: 9 }], { food: 1 }),
+      SLOT("s2", 2, [{ type: "pair" }], { food: 1 }),
     ]
   );
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[6, 1, 1], [5, 2, 2]] });
@@ -153,8 +172,8 @@ test("8: one tribe can claim multiple slots in an event", () => {
     "t8",
     "highestDie",
     [
-      SLOT("s1", [{ type: "sumAtMost", value: 7 }], { food: 1 }),
-      SLOT("s2", [{ type: "pair" }], { food: 2 }),
+      SLOT("s1", 1, [{ type: "sumAtMost", value: 7 }], { food: 1 }),
+      SLOT("s2", 2, [{ type: "pair" }], { food: 2 }),
     ]
   );
   const game = scriptedGame({
@@ -186,7 +205,7 @@ test("8: one tribe can claim multiple slots in an event", () => {
 
 // 9. Event ends when nobody has a legal claim.
 test("9: event ends when nobody can claim", () => {
-  const card = CARD("t9", "population", [SLOT("s1", [{ type: "fourKind" }], { food: 5 })]);
+  const card = CARD("t9", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[1, 2, 3], [4, 5, 6]] });
   game.finishReroll(0);
   game.finishReroll(1);
@@ -201,8 +220,8 @@ test("10: queued rewards are not applied until the claiming phase ends", () => {
     "t10",
     "highestDie",
     [
-      SLOT("s1", [{ type: "pair" }], { food: 3 }),
-      SLOT("s2", [{ type: "sumAtMost", value: 7 }], { food: 1 }),
+      SLOT("s1", 2, [{ type: "pair" }], { food: 3 }),
+      SLOT("s2", 1, [{ type: "sumAtMost", value: 7 }], { food: 1 }),
     ]
   );
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[5, 5, 1], [2, 3, 4]] });
@@ -236,8 +255,8 @@ test("11: rewards resolve in the exact order slots were claimed", () => {
     "t11",
     "highestDie",
     [
-      SLOT("s1", [{ type: "pair" }], { transform: { spend: { tools: 1 }, gain: { food: 4 } } }),
-      SLOT("s2", [{ type: "sumAtMost", value: 7 }], { steal: { tools: 1 } }),
+      SLOT("s1", 2, [{ type: "pair" }], { transform: { spend: { tools: 1 }, gain: { food: 4 } } }),
+      SLOT("s2", 1, [{ type: "sumAtMost", value: 7 }], { steal: { tools: 1 } }),
     ]
   );
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[5, 5, 1], [2, 3, 4]] });
@@ -257,7 +276,7 @@ test("11: rewards resolve in the exact order slots were claimed", () => {
 
 // 12. Population reward does not add dice during the current Event.
 test("12: population rewards do not change the current event's dice", () => {
-  const card = CARD("t12", "highestDie", [SLOT("s1", [{ type: "pair" }], { population: 1 })]);
+  const card = CARD("t12", "highestDie", [SLOT("s1", 2, [{ type: "pair" }], { population: 1 })]);
   const game = scriptedGame({
     aiCount: 1,
     deck: [card],
@@ -321,7 +340,7 @@ test("14: transform failure keeps the spent dice and the claimed slot", () => {
   const card = CARD(
     "t14",
     "highestDie",
-    [SLOT("s1", [{ type: "pair" }], { transform: { spend: { tools: 2 }, gain: { food: 6 } } })]
+    [SLOT("s1", 2, [{ type: "pair" }], { transform: { spend: { tools: 2 }, gain: { food: 6 } } })]
   );
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[5, 5, 1], [2, 3, 4]] });
   game.finishReroll(0);
@@ -341,8 +360,8 @@ test("15: tool stealing works and validates targets", () => {
     "t15",
     "highestDie",
     [
-      SLOT("s1", [{ type: "pair" }], { food: 2 }),
-      SLOT("s2", [{ type: "sumAtMost", value: 7 }], { steal: { tools: 1 } }),
+      SLOT("s1", 2, [{ type: "pair" }], { food: 2 }),
+      SLOT("s2", 1, [{ type: "sumAtMost", value: 7 }], { steal: { tools: 1 } }),
     ]
   );
 
@@ -384,7 +403,7 @@ test("15: tool stealing works and validates targets", () => {
 
 // 16. Population-kill reward works.
 test("16: kill reward removes population and can eliminate", () => {
-  const card = CARD("t16", "highestDie", [SLOT("s1", [{ type: "threeKind" }], { kill: { population: 1 } })]);
+  const card = CARD("t16", "highestDie", [SLOT("s1", 3, [{ type: "threeKind" }], { kill: { population: 1 } })]);
 
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[5, 5, 5], [2, 3, 4]] });
   game.finishReroll(0);
@@ -439,7 +458,7 @@ test("19: population 0 eliminates the tribe", () => {
   assert.equal(t.population, 0);
 
   // integration: tribe starves to 0 during Night -> eliminated -> victory
-  const card = CARD("t19", "population", [SLOT("s1", [{ type: "fourKind" }], { food: 5 })]);
+  const card = CARD("t19", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[1, 2, 3], [4, 5, 6]] });
   game.finishReroll(0);
   game.finishReroll(1);
@@ -463,7 +482,7 @@ test("20: multiple population purchases in one night", () => {
   assert.equal(t.food, 0);
 
   // integration: two separate buy calls in the same Night
-  const card = CARD("t20", "population", [SLOT("s1", [{ type: "fourKind" }], { food: 5 })]);
+  const card = CARD("t20", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[1, 2, 3], [4, 5, 6]] });
   game.finishReroll(0);
   game.finishReroll(1);
@@ -487,7 +506,7 @@ test("21: the last surviving tribe wins", () => {
 });
 
 function runEliminationToVictory() {
-  const card = CARD("t21", "population", [SLOT("s1", [{ type: "fourKind" }], { food: 5 })]);
+  const card = CARD("t21", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
   const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[1, 2, 3], [4, 5, 6]] });
   game.finishReroll(0);
   game.finishReroll(1);
@@ -499,8 +518,8 @@ function runEliminationToVictory() {
 
 // 22. A new Event begins correctly after Night.
 test("22: a new event starts correctly after night", () => {
-  const cardA = CARD("t22a", "population", [SLOT("s1", [{ type: "fourKind" }], { food: 5 })]);
-  const cardB = CARD("t22b", "population", [SLOT("s1", [{ type: "fourKind" }], { food: 5 })]);
+  const cardA = CARD("t22a", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
+  const cardB = CARD("t22b", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
   const game = scriptedGame({
     aiCount: 1,
     deck: [cardA, cardB],
@@ -524,7 +543,7 @@ test("22: a new event starts correctly after night", () => {
 
 // Extra: claim-order tie-break is deterministic (lower seat first).
 test("tie-break: equal order keys -> lower seat index first", () => {
-  const card = CARD("tb", "highestTotal", [SLOT("s1", [{ type: "pair" }], { food: 1 })]);
+  const card = CARD("tb", "highestTotal", [SLOT("s1", 2, [{ type: "pair" }], { food: 1 })]);
   const game = scriptedGame({
     aiCount: 2,
     deck: [card],
@@ -538,8 +557,8 @@ test("tie-break: equal order keys -> lower seat index first", () => {
 
 // Extra: eliminated tribes are skipped in future events.
 test("eliminated tribes take no part in future events", () => {
-  const cardA = CARD("el-a", "population", [SLOT("s1", [{ type: "fourKind" }], { food: 5 })]);
-  const cardB = CARD("el-b", "population", [SLOT("s1", [{ type: "pair" }], { food: 1 })]);
+  const cardA = CARD("el-a", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
+  const cardB = CARD("el-b", "population", [SLOT("s1", 2, [{ type: "pair" }], { food: 1 })]);
   const game = scriptedGame({
     aiCount: 1,
     deck: [cardA, cardB],
@@ -582,4 +601,114 @@ test("eliminated tribes take no part in future events", () => {
   game2.finishReroll(0);
   game2.finishReroll(1);
   assert.deepEqual(game2.claimOrder, [0, 1]);
+});
+
+// ---------------- Prompt 3: diceRequired + free rerolls ----------------
+
+// The initial roll does not consume a reroll.
+test("initial roll consumes no reroll", () => {
+  const game = scriptedGame({ aiCount: 1, rolls: [[1, 2, 3], [4, 5, 6]] });
+  for (const t of game.tribes) {
+    assert.ok(t.dice.length > 0, `${t.name} rolled dice`);
+    assert.equal(t.freeRerolls, FREE_REROLLS_PER_EVENT);
+  }
+});
+
+// Every tribe (human and AI) starts an Event with the configured free rerolls.
+test("every tribe starts an event with the configured free rerolls", () => {
+  const game = new Game({ aiCount: 3, rng: makeRng(2) });
+  for (const t of game.tribes) {
+    assert.equal(t.freeRerolls, FREE_REROLLS_PER_EVENT, `${t.name} free rerolls`);
+  }
+});
+
+// Unused free rerolls do not carry into the next Event; the next Event
+// restores the configured number.
+test("free rerolls reset each event and do not carry over", () => {
+  const cardA = CARD("rr-a", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
+  const cardB = CARD("rr-b", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
+  const game = scriptedGame({
+    aiCount: 1,
+    deck: [cardA, cardB],
+    rolls: [
+      [1, 2, 3], [4, 5, 6], // event 1
+      [2, 2, 2], [6, 6, 6], // event 2
+    ],
+  });
+  // Event 1: use exactly one free reroll, then lock.
+  const d = game.tribes[0].dice[0].id;
+  game.doReroll(0, [d]);
+  assert.equal(game.tribes[0].freeRerolls, FREE_REROLLS_PER_EVENT - 1);
+  game.finishReroll(0);
+  game.finishReroll(1);
+  game.finishGrowth(0);
+  game.finishGrowth(1);
+  // Event 2: restored to the configured count (not 1 carried + 2 new).
+  assert.equal(game.eventIndex, 2);
+  assert.equal(game.tribes[0].freeRerolls, FREE_REROLLS_PER_EVENT);
+  assert.equal(game.tribes[1].freeRerolls, FREE_REROLLS_PER_EVENT);
+});
+
+// submitClaim enforces the exact dice count (fewer AND more are rejected).
+test("submitClaim rejects fewer and more dice than diceRequired", () => {
+  const card = CARD(
+    "cnt",
+    "highestDie",
+    [SLOT("s1", 3, [{ type: "sumAtLeast", value: 10 }], { food: 1 })]
+  );
+  const game = scriptedGame({
+    aiCount: 1,
+    deck: [card],
+    rolls: [
+      [1, 2, 3], [4, 5, 6], // event 1 (discarded)
+      [6, 6, 6, 1], [2, 3, 4], // event 2: H has population 4
+    ],
+  });
+  game.tribes[0].population = 4; // test-only, before the (re)start
+  game.startEvent();
+  game.finishReroll(0);
+  game.finishReroll(1);
+  const ids = game.tribes[0].dice.map((d) => d.id);
+  assert.throws(() => game.submitClaim(0, 0, [ids[0]]), /requires exactly 3 dice/);
+  assert.throws(() => game.submitClaim(0, 0, ids.slice(0, 2)), /requires exactly 3 dice/);
+  assert.throws(() => game.submitClaim(0, 0, ids), /requires exactly 3 dice/); // 4 > 3
+  game.submitClaim(0, 0, ids.slice(0, 3)); // exactly 3 dice, sum 18
+  assert.equal(game.slots[0].claimedBy, 0);
+});
+
+// A card full of high-dice slots stays on the board; undersized tribes
+// simply cannot claim (the Event proceeds normally).
+test("over-sized slots are impossible but the event still proceeds", () => {
+  const card = CARD(
+    "big5",
+    "population",
+    [SLOT("s1", 5, [{ type: "sumAtLeast", value: 20 }], { food: 5 })]
+  );
+  const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[1, 2, 3], [4, 5, 6]] });
+  game.finishReroll(0);
+  game.finishReroll(1);
+  assert.equal(game.claims.length, 0);
+  assert.equal(game.phase, "night");
+  // slot still present on the card, still unclaimed
+  assert.equal(game.slots[0].def.diceRequired, 5);
+  assert.equal(game.slots[0].claimedBy, null);
+});
+
+// The AI completes the reroll phase under the new rules and never spends a
+// Tool while free rerolls remain.
+test("ai completes the reroll phase using free rerolls before tools", () => {
+  const card = CARD("ai-rr", "population", [SLOT("s1", 4, [{ type: "fourKind" }], { food: 5 })]);
+  const game = scriptedGame({ aiCount: 1, deck: [card], rolls: [[1, 2, 3], [1, 3, 5]] });
+  game.finishReroll(0);
+  const ai = game.tribes[1];
+  let decisions = 0;
+  while (game.awaiting && game.awaiting.type === "reroll" && game.awaiting.tribeId === 1) {
+    assert.ok(runAiTurn(game), "AI made a decision");
+    if (ai.freeRerolls > 0)
+      assert.equal(ai.tools, 1, "AI spent a Tool while free rerolls remained");
+    if (++decisions > 10) throw new Error("AI reroll loop did not terminate");
+  }
+  assert.ok(game.rerollDone.has(1), "AI locked its dice");
+  // 3-dice tribes cannot claim a 4-dice slot -> claiming was skipped
+  assert.equal(game.phase, "night");
 });

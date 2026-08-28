@@ -75,23 +75,33 @@ Population determines each tribe's dice-pool size when the Event starts.
 
 Dice are normal six-sided dice.
 
-## Tools and rerolls
+## Rerolls and Tools
 
-Tools are consumable.
+The initial roll does not consume a reroll.
 
-Spending 1 Tool allows one Yahtzee-style reroll.
+Every tribe starts each Event with a configurable number of **free rerolls**.
+The current prototype value is **2 free rerolls per tribe per Event** — a
+prototype balance value that may change after playtesting.
 
-During that reroll:
+A reroll is Yahtzee-style:
 
 * the player may keep any number of dice
 * the player must reroll at least 1 of the remaining dice (a reroll of zero
   dice is not allowed)
-* the entire reroll costs exactly 1 Tool regardless of how many dice are
-  rerolled
+* the cost of the whole reroll does not depend on how many dice are rerolled
 
-A player may spend as many Tools as they currently have.
+Cost: a reroll consumes 1 free reroll while the tribe has any left; once the
+free rerolls are exhausted, each further reroll costs exactly 1 Tool.
 
-All rolling and Tool use is finished before slot claiming begins.
+Free rerolls reset at the start of every Event. Unused free rerolls never
+carry over into the next Event.
+
+A player does not have to use all of their free rerolls, and does not have to
+spend any Tools. Once a tribe chooses to finish rolling, its dice are locked
+for the claiming phase.
+
+All rolling and rerolling (free or Tool-paid) is finished before slot
+claiming begins.
 
 ## Claiming slots
 
@@ -125,6 +135,29 @@ auto-out, or no dice left).
 ## Slot requirements
 
 Requirements are intentionally flexible.
+
+### Required dice count
+
+Every slot explicitly specifies the **exact number of dice required to claim
+it** (`diceRequired`). It is never inferred from the requirement type.
+
+Slot validation always performs both checks:
+
+1. selected dice count === the slot's `diceRequired`
+2. the selected dice satisfy the slot's requirement
+
+Submitting fewer (or more) dice fails even when the submitted dice would
+otherwise satisfy the condition. Example: a 3-die all-odd slot cannot be
+claimed with a single odd die.
+
+Cards may deliberately contain slots that require more dice than a tribe
+currently has (e.g. a 5-dice slot while tribes start at Population 3). Those
+slots are not removed or hidden: they stay visible (name, requirement,
+reward, and required dice count) but are currently **unavailable** to that
+tribe, and become claimable as tribes grow. This is a distinct state from
+having enough dice but no current combination that matches.
+
+### Requirement types
 
 They may include traditional combinations such as:
 
@@ -268,21 +301,26 @@ Every tribe starts the game with:
 * 4 Food
 * 1 Tool
 
-## Prototype assumptions (Prompt 2)
+## Prototype assumptions (Prompts 2–3)
 
 The following are implementation details of the current prototype, not core
 design rules. They exist to keep the prototype simple and testable and may
 change as the game is playtested:
 
+* **Free rerolls.** The current prototype gives every tribe **2 free rerolls
+  per Event** (centralized as `FREE_REROLLS_PER_EVENT` in
+  `src/game/config.js`). This is a prototype balance value that may change
+  after playtesting.
 * **Dice-subset search cap.** When a tribe's dice pool is large (more than 16
   dice), the legal-subset search is capped so it cannot enumerate every
   combination. This keeps claiming responsive; it only matters at very high
   Population.
-* **AI behavior.** AI opponents use simple transparent heuristics (keep a
-  strong anchor pattern when rerolling; pick the highest-scoring legal claim,
-  weighted toward Food when starving; target the strongest tribe with hostile
-  effects; grow while it can afford it). They are intentionally weak and
-  readable, not optimal.
+* **AI behavior.** AI opponents use simple transparent heuristics (spend free
+  rerolls before Tools, keeping a strong anchor pattern when rerolling; pick
+  the highest-scoring legal claim, weighted toward Food when starving; treat
+  slots that require more dice than they hold as impossible; target the
+  strongest tribe with hostile effects; grow while it can afford it). They
+  are intentionally weak and readable, not optimal.
 * **AI pacing.** AI decisions are delayed ~600 ms in the UI so a human can
   follow the game. The game core itself has no timing.
 * **Debug UI.** The prototype UI is a functional debug layout (dice, slots,

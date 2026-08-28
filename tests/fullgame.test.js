@@ -30,7 +30,10 @@ function assertInvariants(game) {
 }
 
 test("full AI game (1 AI) terminates with a winner", () => {
-  const game = runFullAiGame({ aiCount: 1, seed: 42 });
+  // Seed is a fixture: the Prompt 3 economy (free rerolls + retuned slots)
+  // changed how games play out, so the seed was re-picked (seed 42 now
+  // legitimately ends in a draw — both tribes starve on the same Night).
+  const game = runFullAiGame({ aiCount: 1, seed: 2 });
   assertInvariants(game);
   assert.equal(game.phase, "over");
   assert.ok(game.winner);
@@ -81,7 +84,7 @@ test("a night that eliminates every tribe ends the game in a draw", () => {
     id: "draw",
     name: "Draw",
     orderRule: "population",
-    slots: [{ id: "ds", name: "s", requirement: [{ type: "fourKind" }], reward: { food: 1 } }],
+    slots: [{ id: "ds", name: "s", diceRequired: 4, requirement: [{ type: "fourKind" }], reward: { food: 1 } }],
   };
   const game = new Game({ aiCount: 1, deck: [card], rng: makeRng(3) });
   game.finishReroll(0);
@@ -101,7 +104,7 @@ test("same seed + same deck -> identical game (deterministic)", () => {
       id: "d1",
       name: "D1",
       orderRule: "population",
-      slots: [{ id: "d1s1", name: "s", requirement: [{ type: "pair" }], reward: { food: 2 } }],
+      slots: [{ id: "d1s1", name: "s", diceRequired: 2, requirement: [{ type: "pair" }], reward: { food: 2 } }],
     },
   ];
   const a = runFullAiGame({ aiCount: 1, deck, seed: 5 });

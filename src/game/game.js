@@ -13,7 +13,7 @@
 //   startEvent -> 'reroll' -> 'claiming' -> 'reward' -> 'night'
 //   -> (back to startEvent) ... until phase 'over'.
 
-import { START, TRIBE_META } from "./config.js";
+import { START, TRIBE_META, FREE_REROLLS_PER_EVENT } from "./config.js";
 import { PROTOTYPE_EVENTS } from "../data/events.js";
 import {
   computeClaimOrder,
@@ -49,6 +49,7 @@ export class Game {
       population: START.population,
       food: START.food,
       tools: START.tools,
+      freeRerolls: 0,
       eliminated: false,
       dice: [],
     }));
@@ -129,15 +130,19 @@ export class Game {
 
     // Population determines the dice pool size at Event start.
     // Snapshot: population changes later (rewards, night) do NOT change
-    // this Event's dice.
+    // this Event's dice. Every surviving tribe also gets its free rerolls
+    // back (unused free rerolls never carry over between Events).
     for (const t of this.tribes) {
       if (t.eliminated) {
         t.dice = [];
+        t.freeRerolls = 0;
         continue;
       }
       t.dice = this.rollFn(t.population).map((v) => makeDie(v));
+      t.freeRerolls = FREE_REROLLS_PER_EVENT;
       this.pushLog(
-        `${t.name} rolls ${t.dice.length} dice: [${t.dice.map((d) => d.value).join(", ")}]`
+        `${t.name} rolls ${t.dice.length} dice: [${t.dice.map((d) => d.value).join(", ")}] ` +
+          `(${FREE_REROLLS_PER_EVENT} free rerolls)`
       );
     }
 
@@ -168,12 +173,13 @@ export class Game {
     this.advanceTurn();
   }
 
-  // Spend 1 Tool, reroll the given dice (must be a non-empty subset of the
-  // tribe's pool). The tribe then decides again (reroll more / finish).
+  // Reroll the given dice (must be a non-empty subset of the tribe's pool).
+  // The reroll consumes 1 free reroll if the tribe has any left, otherwise
+  // 1 Tool. The cost is the same regardless of how many dice are rerolled.
+  // The tribe then decides again (reroll more / finish).
   doReroll(tribeId, dieIds) {
     this.assertRerollTurn(tribeId);
     const t = this.tribes[tribeId];
-    if (t.tools < 1) throw new Error(`${t.name} has no Tools left`);
     if (!Array.isArray(dieIds) || dieIds.length === 0)
       throw new Error("A reroll must reroll at least 1 die");
     const poolIds = new Set(t.dice.map((d) => d.id));
@@ -182,13 +188,23 @@ export class Game {
     for (const id of dieIds)
       if (!poolIds.has(id)) throw new Error("Die is not in the tribe's pool");
 
-    t.tools -= 1;
+    let cost;
+    if (t.freeRerolls > 0) {
+      t.freeRerolls -= 1;
+      cost = `uses a free reroll (${t.freeRerolls} left)`;
+    } else if (t.tools > 0) {
+      t.tools -= 1;
+      cost = `spends 1 Tool (${t.tools} left)`;
+    } else {
+      throw new Error(`${t.name} has no free rerolls or Tools left`);
+    }
+
     const rerolled = t.dice.filter((d) => dieIds.includes(d.id));
     for (const d of rerolled) d.value = 1 + Math.floor(this.rng() * 6);
     this.pushLog(
-      `${t.name} spends 1 Tool and rerolls ${rerolled.length} die: ` +
+      `${t.name} ${cost} and rerolls ${rerolled.length} die: ` +
         `[${rerolled.map((d) => d.value).join(", ")}] ` +
-        `(${t.tools} Tool${t.tools === 1 ? "" : "s"} left, dice: [${t.dice.map((d) => d.value).join(", ")}])`
+        `(dice: [${t.dice.map((d) => d.value).join(", ")}])`
     );
     // still this tribe's turn: it may reroll again or finish
   }
@@ -269,6 +285,11 @@ export class Game {
     for (const id of dieIds)
       if (!poolIds.has(id)) throw new Error("Die is not in the tribe's pool");
     const selected = t.dice.filter((d) => dieIds.includes(d.id));
+    const need = slot.def.diceRequired;
+    if (selected.length !== need)
+      throw new Error(
+        `"${slot.def.name}" requires exactly ${need} dice (you submitted ${selected.length})`
+      );
     if (!checkSlot(selected.map((d) => d.value), slot.def))
       throw new Error(
         `Selected dice [${selected.map((d) => d.value).join(", ")}] do not satisfy "${slot.def.name}"`

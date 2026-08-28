@@ -1,11 +1,17 @@
-// Debug game screen (Prompt 2): renders the full game state and routes
+// Debug game screen (Prompt 3): renders the full game state and routes
 // human clicks to the same Game action API the AI uses.
 //
 // Interaction (human seat 0):
-//   reroll : click own dice to select, "Reroll selected (1 Tool)" / "Finish rolling"
+//   reroll : click own dice to select, "Reroll selected" (free rerolls,
+//            then Tools) / "Finish rolling"
 //   claim  : click own dice to select, click a slot to submit (validated)
 //   target : click a highlighted tribe panel
 //   growth : "Buy 1 Pop (2 Food)" / "Done with Night"
+//
+// Slots render in three states during claiming (for the human tribe):
+//   impossible : fewer dice left than the slot requires (dimmed, disabled)
+//   no-match   : enough dice, but no current combination satisfies it
+//   available  : a legal claim exists (clickable on the human's turn)
 //
 // AI turns run in an async pump with a small delay so the human can follow.
 
@@ -16,6 +22,7 @@ import {
   describeReward,
   ORDER_RULES,
   validHostileTargets,
+  hasLegalClaim,
 } from "../game/rules.js";
 import { AI_TURN_DELAY_MS } from "../game/config.js";
 import {
@@ -35,9 +42,11 @@ function panelRect(x, y, w, h) {
   return new Graphics().rect(x, y, w, h).fill(C.panel).stroke({ width: 1, color: C.border });
 }
 
-function slotBg(x, y, w, h, claimed, pickable) {
+// state: "claimed" | "impossible" | "no-match" | "available" | "neutral"
+function slotBg(x, y, w, h, state, pickable) {
   const g = new Graphics().rect(x, y, w, h);
-  if (claimed) g.fill(0x1c1533);
+  if (state === "claimed") g.fill(0x1c1533);
+  else if (state === "impossible") g.fill(0x120e1e);
   else if (pickable) g.fill(0x2e2552).stroke({ width: 1, color: C.dim });
   else g.fill(0x1f1839);
   return g;
@@ -113,6 +122,20 @@ export function buildGameScene(ctx, game, onNewGame) {
   }
 
   // ---- slots panel ----
+  // Slot state from the HUMAN tribe's perspective:
+  //   impossible : slot needs more dice than the human has left (dimmed)
+  //   no-match   : enough dice, but no current combination satisfies it
+  //   available  : a legal claim exists with the current dice
+  // (claimed / neutral outside the claiming phase.)
+  function slotState(slot) {
+    const human = game.tribes[0];
+    if (slot.claimedBy !== null) return "claimed";
+    if (game.phase !== "claiming" || human.eliminated) return "neutral";
+    if (slot.def.diceRequired > human.dice.length) return "impossible";
+    if (!hasLegalClaim(human.dice, slot.def)) return "no-match";
+    return "available";
+  }
+
   function renderSlots() {
     const x = 8;
     const y = 48;
@@ -123,12 +146,35 @@ export function buildGameScene(ctx, game, onNewGame) {
 
     const a = game.awaiting;
     const canPick = humanTurn(a) && a.type === "claim";
+    const human = game.tribes[0];
+    const dimGray = 0x57506e;
     game.slots.forEach((slot, i) => {
       const sy = y + 44 + i * 49;
-      const claimed = slot.claimedBy !== null;
-      dyn.addChild(slotBg(x + 6, sy, w - 12, 45, claimed, canPick));
+      const state = slotState(slot);
+      const claimed = state === "claimed";
+      const pickable = state === "available" && canPick;
+      dyn.addChild(slotBg(x + 6, sy, w - 12, 45, state, pickable));
+
+      let nameColor = C.text;
+      let descColor = C.faint;
+      let rewardColor = C.green;
+      let tag = "";
+      if (state === "claimed") {
+        nameColor = C.faint;
+        descColor = 0x776f95;
+        rewardColor = 0x776f95;
+      } else if (state === "impossible") {
+        nameColor = dimGray;
+        descColor = dimGray;
+        rewardColor = dimGray;
+        tag = `  [needs ${slot.def.diceRequired} dice, you have ${human.dice.length}]`;
+      } else if (state === "no-match") {
+        rewardColor = 0x776f95;
+        tag = `  [no match with your dice]`;
+      }
+
       dyn.addChild(place(
-        txt(`${i + 1}. ${slot.def.name}`, 12, claimed ? C.faint : C.text, { bold: true }),
+        txt(`${i + 1}. ${slot.def.name}`, 12, nameColor, { bold: true }),
         x + 12,
         sy + 3
       ));
@@ -140,16 +186,16 @@ export function buildGameScene(ctx, game, onNewGame) {
         ));
       }
       dyn.addChild(place(
-        txt(describeSlot(slot.def), 11, claimed ? 0x776f95 : C.faint),
+        txt(describeSlot(slot.def) + tag, 11, descColor),
         x + 12,
         sy + (claimed ? 33 : 19)
       ));
       dyn.addChild(place(
-        txt(describeReward(slot.def.reward), 11, claimed ? 0x776f95 : C.green),
+        txt(describeReward(slot.def.reward), 11, rewardColor),
         x + 12,
         sy + (claimed ? 45 : 33)
       ));
-      if (canPick && !claimed) hitRect(dyn, x + 6, sy, w - 12, 45, () => tryClaim(i));
+      if (pickable) hitRect(dyn, x + 6, sy, w - 12, 45, () => tryClaim(i));
     });
   }
 
@@ -215,8 +261,12 @@ export function buildGameScene(ctx, game, onNewGame) {
           ty + 7
         ));
 
+      const rerollTxt =
+        game.phase === "reroll" && !t.eliminated
+          ? `    ${t.freeRerolls} free reroll${t.freeRerolls === 1 ? "" : "s"} left`
+          : "";
       dyn.addChild(place(
-        txt(`Pop ${t.population}    Food ${t.food}    Tools ${t.tools}`, 13, t.eliminated ? C.dim : C.faint),
+        txt(`Pop ${t.population}    Food ${t.food}    Tools ${t.tools}${rerollTxt}`, 13, t.eliminated ? C.dim : C.faint),
         x + 14,
         ty + 26
       ));
@@ -281,9 +331,16 @@ export function buildGameScene(ctx, game, onNewGame) {
     } else if (a && a.tribeId === 0) {
       if (a.type === "reroll") {
         const n = view.sel.size;
+        const hasFree = t.freeRerolls > 0;
+        const hasTool = t.tools > 0;
+        const costTxt = hasFree
+          ? `free, ${t.freeRerolls} left`
+          : hasTool
+            ? "costs 1 Tool"
+            : "no rerolls left";
         button(
           dyn, bx, by, bw, 30,
-          `Reroll selected (${n} die, costs 1 Tool)`,
+          `Reroll selected (${n} die) — ${costTxt}`,
           () => {
             try {
               game.doReroll(0, [...view.sel]);
@@ -294,7 +351,7 @@ export function buildGameScene(ctx, game, onNewGame) {
             render();
             pump();
           },
-          t.tools > 0 && n > 0
+          (hasFree || hasTool) && n > 0
         );
         by += 36;
         button(dyn, bx, by, bw, 30, "Finish rolling (lock dice)", () => {
