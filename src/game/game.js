@@ -12,6 +12,11 @@
 // Phase flow per Event:
 //   startEvent -> 'reroll' -> 'claiming' -> 'reward' -> 'night'
 //   -> (back to startEvent) ... until phase 'over'.
+//
+// By default the reward phase resolves all queued claims synchronously.
+// Pass stepRewards:true to the constructor to instead resolve one queued
+// claim per stepReward() call (the UI uses this to present rewards in
+// sequence); see stepReward() for the result descriptors.
 
 import { START, TRIBE_META, FREE_REROLLS_PER_EVENT } from "./config.js";
 import { PROTOTYPE_EVENTS } from "../data/events.js";
@@ -34,12 +39,16 @@ function makeDie(value) {
 }
 
 export class Game {
-  constructor({ aiCount = 1, deck, rng, rollFn } = {}) {
+  constructor({ aiCount = 1, deck, rng, rollFn, stepRewards = false } = {}) {
     if (aiCount < 1 || aiCount > 3) throw new Error("aiCount must be 1..3");
     this.rng = rng ?? Math.random;
+    // stepRewards (UI mode): queued rewards resolve one per stepReward()
+    // call instead of all at once, so a UI can present them in sequence.
+    // Default false keeps the original synchronous behavior.
+    this.stepRewards = stepRewards;
     this.rollFn =
-    rollFn ??
-    ((count) => Array.from({ length: count }, () => 1 + Math.floor(this.rng() * 6)));
+      rollFn ??
+      ((count) => Array.from({ length: count }, () => 1 + Math.floor(this.rng() * 6)));
 
     this.tribes = Array.from({ length: aiCount + 1 }, (_, i) => ({
       id: i,
@@ -325,6 +334,7 @@ export class Game {
     this.phase = "reward";
     this.claimResolvePos = 0;
     this.logEvent(`Rewards (${this.claims.length} queued claim${this.claims.length === 1 ? "" : "s"})`);
+    if (this.stepRewards) return; // UI drives stepReward() one claim at a time
     this.advanceReward();
   }
 
@@ -332,44 +342,69 @@ export class Game {
   // Stops and sets awaiting={type:'target'} when a hostile reward needs a
   // target; continues after resolveWithTarget().
   advanceReward() {
-    while (this.claimResolvePos < this.claims.length) {
-      const claim = this.claims[this.claimResolvePos];
-      const claimer = this.tribes[claim.tribeId];
-      const slot = this.slots[claim.slotIndex];
-      if (claimer.eliminated) {
+    for (;;) {
+      const r = this.stepReward();
+      if (r.done || r.needsTarget) return;
+    }
+  }
+
+  // Resolves exactly ONE queued claim (or skips one voided/fizzled claim),
+  // in the exact order the slots were claimed. In stepRewards mode a UI
+  // calls this repeatedly to present rewards one at a time;
+  // advanceReward() is a loop over it for the default synchronous mode.
+  //
+  // Returns one of:
+  //   { done: true }                                queue empty, Night started
+  //   { needsTarget: { tribeId, effect } }          hostile reward, awaiting set
+  //   { applied:   { tribeId, slotIndex, lines } }  reward applied
+  //   { voided:    { tribeId, slotIndex } }         claimer eliminated, skipped
+  //   { fizzled:   { tribeId, slotIndex } }         no valid hostile target
+  stepReward() {
+    if (this.phase !== "reward")
+      throw new Error(`Not in reward phase (in ${this.phase})`);
+    if (this.awaiting && this.awaiting.type === "target")
+      throw new Error("A hostile reward is awaiting target selection");
+    const claim = this.claims[this.claimResolvePos];
+    if (!claim) {
+      this.finishRewards();
+      return { done: true };
+    }
+    const claimer = this.tribes[claim.tribeId];
+    const slot = this.slots[claim.slotIndex];
+    if (claimer.eliminated) {
+      this.pushLog(
+        `${claimer.name}'s queued reward for "${slot.def.name}" is VOIDED (tribe eliminated)`
+      );
+      this.claimResolvePos++;
+      return { voided: { tribeId: claim.tribeId, slotIndex: claim.slotIndex } };
+    }
+    const reward = slot.def.reward;
+    if (isHostileReward(reward)) {
+      const targets = validHostileTargets(this.tribes, claim.tribeId, reward);
+      if (targets.length === 0) {
+        // Prototype assumption: a hostile reward with no valid target at
+        // resolution time simply fizzles (the claim still stands).
         this.pushLog(
-          `${claimer.name}'s queued reward for "${slot.def.name}" is VOIDED (tribe eliminated)`
+          `${claimer.name}'s ${describeReward(reward)} fizzles (no valid target)`
         );
         this.claimResolvePos++;
-        continue;
+        return { fizzled: { tribeId: claim.tribeId, slotIndex: claim.slotIndex } };
       }
-      const reward = slot.def.reward;
-      if (isHostileReward(reward)) {
-        const targets = validHostileTargets(this.tribes, claim.tribeId, reward);
-        if (targets.length === 0) {
-          // Prototype assumption: a hostile reward with no valid target at
-          // resolution time simply fizzles (the claim still stands).
-          this.pushLog(
-            `${claimer.name}'s ${describeReward(reward)} fizzles (no valid target)`
-          );
-          this.claimResolvePos++;
-          continue;
-        }
-        this.awaiting = {
-          type: "target",
-          tribeId: claim.tribeId,
-          effect: reward,
-        };
-        this.pushLog(
-          `${claimer.name} must choose a target for: ${describeReward(reward)}`
-        );
-        return;
-      }
-      for (const line of applyReward(this.tribes, claim.tribeId, reward, null))
-        this.pushLog(line);
-      this.claimResolvePos++;
+      this.awaiting = {
+        type: "target",
+        tribeId: claim.tribeId,
+        effect: reward,
+      };
+      this.pushLog(
+        `${claimer.name} must choose a target for: ${describeReward(reward)}`
+      );
+      return { needsTarget: { tribeId: claim.tribeId, effect: reward } };
     }
-    this.finishRewards();
+    const lines = [];
+    for (const line of applyReward(this.tribes, claim.tribeId, reward, null))
+      lines.push(line);
+    this.claimResolvePos++;
+    return { applied: { tribeId: claim.tribeId, slotIndex: claim.slotIndex, lines } };
   }
 
   // Targets a hostile reward currently awaiting selection.
@@ -388,7 +423,8 @@ export class Game {
       this.pushLog(line);
     this.claimResolvePos++;
     this.awaiting = null;
-    this.advanceReward();
+    if (!this.stepRewards) this.advanceReward();
+    // stepRewards mode: the UI pump calls stepReward() for the next claim.
   }
 
   finishRewards() {

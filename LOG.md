@@ -133,3 +133,6 @@ This is a lot more fun to play than the previous version. I don't feel like I'm 
 
 Saved as Session 9.json
 
+## Step 8 - UX Improvents
+Let's improve the UX now that we have a core loop that is enjoyable to play.
+

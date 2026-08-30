@@ -323,11 +323,16 @@ change as the game is playtested:
   are intentionally weak and readable, not optimal.
 * **AI pacing.** AI decisions are delayed ~600 ms in the UI so a human can
   follow the game. The game core itself has no timing.
-* **Debug UI.** The prototype UI is a functional debug layout (dice, slots,
-  tribe panels, action buttons, log). It is not the final drag-and-drop
-  interaction described in "Slot interaction".
+* **UI.** The prototype UI implements the intended drag-and-drop interaction
+  from "Slot interaction": dice are dragged from the player's tray into a
+  slot's dice tray (tentative — nothing is submitted until the player presses
+  CLAIM, and dice are not consumed until then), with live valid/invalid
+  feedback on the staged set. Rerolls use click-to-KEEP marking; hostile
+  targets are picked by clicking a highlighted tribe; Night shows a per-tribe
+  feeding summary. Dice are placeholder pip graphics; the layout is a
+  functional 1280x800 desktop build, not final art.
 * **Debug hooks.** The page exposes `window.__cp = { game, scene }` for
   inspection/testing, and `?autoplay=N` (N = 1..3) auto-starts a game with N
   AI opponents. Both are development aids and may be removed later.
-* **Canvas.** The game renders to a fixed 960x640 canvas, centered and scaled
-  to fit the window.
+* **Canvas.** The game renders to a fixed 1280x800 canvas, centered and
+  scaled to fit the window.

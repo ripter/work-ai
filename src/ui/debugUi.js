@@ -28,9 +28,11 @@ export function startApp(app) {
   function startGame(aiCount) {
     ctx.gen++;
     ctx.pump = null;
-    const game = new Game({ aiCount });
+    // stepRewards: the scene presents reward steps one at a time instead
+    // of the model resolving the whole queue synchronously.
+    const game = new Game({ aiCount, stepRewards: true });
     destroyAll(app.stage);
-    const scene = buildGameScene(ctx, game, showSetup);
+    const scene = buildGameScene(app, ctx, game, showSetup);
     app.stage.addChild(scene);
     scene.render();
     scene.pump();
@@ -43,9 +45,9 @@ function buildSetupScene(onStart) {
   const scene = new Container();
   scene.addChild(new Graphics().rect(0, 0, W, H).fill(C.bg));
 
-  scene.addChild(place(txt("CavePerson", 44, C.text, { bold: true, anchor: true }), W / 2, 90));
-  scene.addChild(place(txt("core game loop - debug build", 16, C.faint, { anchor: true }), W / 2, 132));
-  scene.addChild(place(txt("Start a game with:", 16, C.faint, { anchor: true }), W / 2, 200));
+  scene.addChild(place(txt("CavePerson", 44, C.text, { bold: true, anchor: 0.5 }), W / 2, 90));
+  scene.addChild(place(txt("core game loop - debug build", 16, C.faint, { anchor: 0.5 }), W / 2, 132));
+  scene.addChild(place(txt("Start a game with:", 16, C.faint, { anchor: 0.5 }), W / 2, 200));
 
   const opts = [
     { n: 1, label: "1 AI opponent" },
@@ -57,21 +59,22 @@ function buildSetupScene(onStart) {
   });
 
   const help = [
-    "How to play (debug):",
-    "  REROLL  - click your dice to select them, then use",
-    "            'Reroll selected' or 'Finish rolling'.",
-    "            2 free rerolls per Event, then 1 Tool each.",
-    "  CLAIM   - click your dice to select them, then click a",
-    "            slot to submit that exact selection. Slots need",
-    "            an EXACT dice count; dimmed slots need more dice",
-    "            than you have and can't be claimed.",
+    "How to play:",
+    "  REROLL  - click your dice to mark KEEP (they lift up).",
+    "            REROLL rerolls everything not kept: 2 free per Event,",
+    "            then 1 Tool each. DONE ROLLING costs nothing.",
+    "  CLAIM   - drag dice from YOUR DICE into a slot's dice tray.",
+    "            Staging is tentative: drop outside or press 'return'",
+    "            to take them back. Green = valid, then press CLAIM.",
     "  TARGET  - click a highlighted tribe panel",
-    "  NIGHT   - 'Buy 1 Population (2 Food)' / 'Done with Night'",
+    "  NIGHT   - buy Population (2 Food each, any amount) or press",
+    "            'Done with Night'",
     "",
-    "Rewards are queued and resolve in claim order after the",
-    "claiming phase ends. Last surviving tribe wins.",
+    "Rewards resolve one at a time in claim order after claiming",
+    "ends. Night: feed in seat order (1 Food per Pop), then grow.",
+    "Last surviving tribe wins.",
   ];
-  scene.addChild(place(txt(help.join("\n"), 12, C.faint), W / 2 - 270, 410));
+  scene.addChild(place(txt(help.join("\n"), 12, C.faint), W / 2 - 280, 400));
 
   return scene;
 }

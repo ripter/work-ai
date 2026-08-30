@@ -1,10 +1,12 @@
-// Minimal PixiJS UI kit for the debug screens (Prompt 2).
-// Deliberately small: text, buttons, dice squares, destroy helper.
+// Minimal PixiJS UI kit. Deliberately small: text, buttons, panels,
+// destroy helper. Dice rendering/drag lives in dieView.js (Prompt 3).
 
 import { Container, Graphics, Text } from "pixi.js";
 
-export const W = 960;
-export const H = 640;
+// Logical canvas size (desktop-first). The canvas is CSS-scaled to fit
+// the window; pointer coordinates are handled by Pixi under the scaling.
+export const W = 1280;
+export const H = 800;
 
 export const C = {
   bg: 0x1d2b53,
@@ -45,15 +47,38 @@ export function place(t, x, y) {
   return t;
 }
 
-export function button(parent, x, y, w, h, label, onTap, enabled = true) {
+export function panel(x, y, w, h, fill = C.panel) {
+  return new Graphics()
+    .roundRect(x, y, w, h, 8)
+    .fill(fill)
+    .stroke({ width: 1, color: C.border });
+}
+
+export function button(
+  parent,
+  x,
+  y,
+  w,
+  h,
+  label,
+  onTap,
+  enabled = true,
+  opts = {}
+) {
   const g = new Container();
+  const accent = opts.accent;
   g.addChild(
     new Graphics()
-      .rect(0, 0, w, h)
+      .roundRect(0, 0, w, h, 6)
       .fill(enabled ? 0x3a2d6b : 0x2b2444)
-      .stroke({ width: 1, color: enabled ? C.border : C.dim })
+      .stroke({
+        width: enabled ? 1 : 1,
+        color: enabled ? (accent ?? C.border) : C.dim,
+      })
   );
-  const t = txt(label, 13, enabled ? C.text : 0x776f95);
+  const t = txt(label, opts.font ?? 13, enabled ? (opts.labelColor ?? C.text) : 0x776f95, {
+    bold: opts.bold,
+  });
   t.anchor.set(0.5);
   t.x = w / 2;
   t.y = h / 2;
@@ -69,31 +94,7 @@ export function button(parent, x, y, w, h, label, onTap, enabled = true) {
   return g;
 }
 
-export function dieSquare(parent, x, y, value, onTap, selected) {
-  const s = new Container();
-  s.addChild(
-    new Graphics()
-      .rect(0, 0, 34, 34)
-      .fill(selected ? 0x4a5a23 : 0x241b3f)
-      .stroke({ width: selected ? 2 : 1, color: selected ? C.yellow : C.dim })
-  );
-  const t = txt(value, 18, C.text);
-  t.anchor.set(0.5);
-  t.x = 17;
-  t.y = 17;
-  s.addChild(t);
-  s.x = x;
-  s.y = y;
-  if (onTap) {
-    s.eventMode = "static";
-    s.cursor = "pointer";
-    s.on("pointertap", onTap);
-  }
-  parent.addChild(s);
-  return s;
-}
-
-// Transparent hit area over a rect (for slots / tribe panels).
+// Transparent hit area over a rect (for slot / tribe panels).
 export function hitRect(parent, x, y, w, h, onTap) {
   const hit = new Graphics().rect(x, y, w, h).fill({ color: 0x000000, alpha: 0 });
   hit.eventMode = "static";

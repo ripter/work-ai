@@ -374,3 +374,112 @@ shasum LOG.md stats/*.json        # before/after identical
   untouched via shasum.
 - Nothing was committed; the working tree contains Prompt 3, ready for the
   maintainer to review, playtest, and commit.
+
+## 2026-08-29 — Prompt 3: drag-and-drop dice interaction, readable
+phases (placeholder art, 1280x800, no rule changes)
+
+**What happened.** Replaced the Prompt 2 debug UI (click-to-select dice,
+"Reroll selected" buttons) with the intended gameplay interaction: click a
+die to mark KEEP during the reroll phase, and drag dice from the YOUR DICE
+tray into a slot's dice tray during claiming. Staging is tentative (one
+slot at a time, live incomplete/invalid/valid feedback, drop-outside or
+"return" to undo, full-tray drop swaps the last die in) and nothing is
+submitted or consumed until CLAIM, which goes through
+`game.submitClaim` — the model stays the sole legality authority. The
+canvas grew to 1280x800 (CSS-scaled) so a 7-slot card, four tribe rows,
+dice tray, per-claim reward list, night feeding summary, and an 8-line log
+fit without scrolling. Dice are placeholder pip graphics.
+
+**Changes made.**
+- `src/game/game.js` — new opt-in constructor flag `stepRewards` (default
+  `false` = the original synchronous reward resolution, unchanged for
+  tests/AI harnesses) plus `stepReward()`, which resolves exactly one
+  queued claim and returns `{done|needsTarget|applied|voided|fizzled}`
+  descriptors. `advanceReward()` is now a loop over it; `beginRewards`/
+  `resolveWithTarget` respect step mode. No rule or balance changes.
+- `src/ui/claimStaging.js` (new) — pure, Node-testable tentative-staging
+  state machine (`newStaging`, `poolDice`, `canStageInto`, `stage`,
+  `unstage`, `dropDie`, `stagedState`, `stagedDieIds`, `slotDisplayState`).
+  Staging never mutates the model pool.
+- `src/ui/dieView.js` (new) — placeholder pip die with visual states
+  (normal/hover/drag/kept/staged/valid/invalid/dim) and drag behavior.
+  Pixi v8 has no pointer capture, so a drag tracks pointermove/pointerup on
+  a `dragTarget` (the scene passes `app.stage`). `tumble()` is a cosmetic
+  animation that always settles on the model's values.
+- `src/ui/gameScene.js` — full rewrite around the new layout and
+  interaction: 1280x800 (left event-card panel with per-slot dice trays,
+  right column with tribe rows / context panels / log), KEEP tap-to-select,
+  drag-and-drop staging with live validation, per-claim reward list that
+  resolves one step at a time (900 ms) with target-pick highlighting,
+  night per-tribe feeding rows (feed/starve/left/grow), AI banners +
+  slot flash + dice-diff animations, and a game-over overlay. A
+  `view.turnKey` reset keeps per-decision UI state (staging, KEEP, growth
+  count) scoped to the current decision.
+- `src/ui/uiKit.js` — `W/H` now 1280x800; added `panel()`; `button()`
+  gained label-size/accent/bold options; removed the old `dieSquare`
+  (replaced by dieView.js).
+- `src/ui/debugUi.js` — passes `app` + `stepRewards: true` to the scene,
+  updated the setup help text for the new controls, fixed a pre-existing
+  `anchor: true` (became anchor 1,1; now 0.5) centering bug.
+- `tests/claimStaging.test.js` (new, 16 tests) — staging never touches the
+  model pool; pool/staged bookkeeping; incomplete/invalid/valid tracking;
+  full-tray and claimed-slot rejections; one-slot-at-a-time; drop
+  semantics; every `slotDisplayState` state.
+- `tests/interaction.test.js` (new, 8 tests) — model-level flow tests for
+  the interaction: staging consumes nothing and a claim consumes exactly
+  the submitted dice; invalid claims are rejected with state unchanged;
+  claimed slots stay claimed; reroll results are model-determined and
+  deterministic (same seed -> same values); free rerolls before Tools;
+  DONE ROLLING costs nothing; full-tray swap semantics (replica of the
+  scene's drop handler); `stagedState` mirrors model validation.
+- `GAME_SPEC.md` — updated the two now-stale prototype-assumption bullets
+  (canvas 960x640 -> 1280x800; "Debug UI" -> describes the implemented
+  drag-and-drop interaction). No rule changes.
+
+**Commands run.**
+```sh
+npm test                            # 63/63 baseline, 87/87 after
+make build                          # vite build -> dist/, all refs ./assets
+node /tmp/cdp-smoke.mjs             # headless-Chrome CDP against the dev
+                                    # server: real scene, simulated pointer
+                                    # events for KEEP tap + drag/drop, live
+                                    # validation, swap, claim, advance to
+                                    # event 2 — PASS, zero page errors
+node /tmp/cdp-autoplay.mjs          # full AI game through the scene
+                                    # (seat 0 flipped to AI via CDP): 4
+                                    # events, starvation elimination,
+                                    # single winner, zero page errors
+shasum LOG.md stats/*.json          # before/after identical
+```
+(The two CDP scripts are throwaway verification tools in /tmp, not part of
+the repo.)
+
+**Failures / fixes.**
+- `claimStaging.stage()` no-op'd when a staged die was dropped onto a
+  *different* slot (the "already staged" check ignored the slot). Fixed to
+  only no-op when the slot matches; the move now clears the old tray and
+  re-stages. Caught by `tests/claimStaging.test.js`.
+- `dieView.js` used `e.target.setPointerCapture(...)` — a Pixi v7 API that
+  does not exist in v8, so every real drag would have thrown. Rewrote the
+  drag to listen for pointermove/pointerup on a stage-level `dragTarget`.
+  Caught by the headless smoke test (simulated pointerdown).
+- The reward pump's target-wait branches checked `tribeId === 0` instead of
+  `humanTurn()` — a latent deadlock for any non-human seat 0 (e.g. the
+  autoplay verification). Fixed to use `humanTurn()`.
+- Scene review fixes: human dice are hidden while reward/night panels cover
+  the tray area; staging is cleared if the staged slot gets claimed by an
+  AI mid-phase; a reward row left in "pick a target" state is closed out
+  when the pump resumes after the target is chosen.
+
+**Assumptions.**
+- `stepRewards` is the only model-surface change; default mode is
+  byte-for-byte the old behavior, so all 63 pre-existing tests pass
+  untouched.
+- The AI's turn order means the human (seat 0, first in most order rules)
+  stages before AI claims; staging survives AI turns within one claiming
+  phase, matching the "tentative, one at a time" spec.
+- `?autoplay=N` still stops at the human seat (seat 0 is always the human
+  in the model) — the autoplay verification flipped seat 0 to AI via CDP
+  rather than changing the debug aid's contract.
+- Nothing was committed; the working tree contains the Prompt 3 UI, ready
+  for the maintainer to review, playtest, and commit.

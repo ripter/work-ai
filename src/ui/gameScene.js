@@ -1,108 +1,543 @@
-// Debug game screen (Prompt 3): renders the full game state and routes
-// human clicks to the same Game action API the AI uses.
+// Game screen (Prompt 3): renders the full game state and provides the
+// intended drag-and-drop dice interaction.
 //
 // Interaction (human seat 0):
-//   reroll : click own dice to select, "Reroll selected" (free rerolls,
-//            then Tools) / "Finish rolling"
-//   claim  : click own dice to select, click a slot to submit (validated)
+//   reroll : click own dice to mark KEEP (lifted + yellow ring); REROLL
+//            rerolls all unkept dice; DONE ROLLING locks without cost
+//   claim  : drag dice from the YOUR DICE tray into a slot's dice tray
+//            (tentative, one slot at a time); live incomplete/invalid/valid
+//            feedback; CLAIM commits (the model re-validates); drag dice
+//            back out or press "return" to undo
 //   target : click a highlighted tribe panel
-//   growth : "Buy 1 Pop (2 Food)" / "Done with Night"
+//   night  : buy Population (2 Food each, multiple allowed) / Done with Night
 //
-// Slots render in three states during claiming (for the human tribe):
-//   impossible : fewer dice left than the slot requires (dimmed, disabled)
-//   no-match   : enough dice, but no current combination satisfies it
-//   available  : a legal claim exists (clickable on the human's turn)
+// Readability:
+//   - initial rolls and rerolls tumble dice to the model's results
+//     (animation is cosmetic; the model decides all values)
+//   - AI turns: short delay, banner, dice-diff animation, slot flash
+//   - rewards resolve one at a time (stepRewards mode) with per-claim rows
+//   - night: per-tribe feeding summary + growth controls
 //
-// AI turns run in an async pump with a small delay so the human can follow.
+// The Game model (src/game/game.js) is the sole authority on legality;
+// this scene renders state, collects player intent, and animates changes.
 
 import { Container, Graphics } from "pixi.js";
-import { applyAiDecision } from "../game/ai.js";
+import { applyAiDecision, aiTargetDecision } from "../game/ai.js";
+import { describeSlot, describeReward, ORDER_RULES, validHostileTargets } from "../game/rules.js";
+import { AI_TURN_DELAY_MS, GROWTH_FOOD_COST } from "../game/config.js";
 import {
-  describeSlot,
-  describeReward,
-  ORDER_RULES,
-  validHostileTargets,
-  hasLegalClaim,
-} from "../game/rules.js";
-import { AI_TURN_DELAY_MS } from "../game/config.js";
-import {
-  W,
-  H,
-  C,
-  sleep,
-  txt,
-  place,
-  button,
-  dieSquare,
-  hitRect,
-  destroyAll,
-} from "./uiKit.js";
+  newStaging,
+  poolDice,
+  canStageInto,
+  stagedState,
+  stagedDieIds,
+  unstage,
+  dropDie,
+  slotDisplayState,
+  isHumanClaimTurn,
+} from "./claimStaging.js";
+import { makeDie, tumble } from "./dieView.js";
+import { W, H, C, sleep, txt, place, panel, button, hitRect, destroyAll } from "./uiKit.js";
 
-function panelRect(x, y, w, h) {
-  return new Graphics().rect(x, y, w, h).fill(C.panel).stroke({ width: 1, color: C.border });
-}
+// ---- layout (1280x800, desktop-first) ----
+const CARD_X = 8;
+const CARD_Y = 48;
+const CARD_W = 470;
+const CARD_H = 744;
+const SLOT_X = CARD_X + 6;
+const SLOT_W = CARD_W - 12;
 
-// state: "claimed" | "impossible" | "no-match" | "available" | "neutral"
-function slotBg(x, y, w, h, state, pickable) {
-  const g = new Graphics().rect(x, y, w, h);
-  if (state === "claimed") g.fill(0x1c1533);
-  else if (state === "impossible") g.fill(0x120e1e);
-  else if (pickable) g.fill(0x2e2552).stroke({ width: 1, color: C.dim });
-  else g.fill(0x1f1839);
-  return g;
-}
+const RIGHT_X = 486;
+const RIGHT_W = 786;
+const TRIBE_Y = 48;
+const TRIBE_H = 396;
+const ROW0_Y = TRIBE_Y + 26;
+const ROW_PITCH = 92;
 
-function tribeBg(x, y, w, h, tribe, isTurn, validTargets) {
-  const g = new Graphics().rect(x, y, w, h);
-  if (tribe.eliminated) g.fill(0x171126);
-  else if (isTurn) g.fill(0x2e2552).stroke({ width: 2, color: C.yellow });
-  else if (validTargets.includes(tribe.id)) g.fill(0x3a1f2a).stroke({ width: 2, color: C.red });
-  else g.fill(0x1f1839);
-  return g;
-}
+const CTX_Y = 452; // context area A: dice tray / rewards / night rows
+const CTX_H = 118;
+const ACT_Y = 574; // context area B: action buttons
+const ACT_H = 58;
+const LOG_Y = 638;
+const LOG_H = 154;
 
-export function buildGameScene(ctx, game, onNewGame) {
+const DIE_HUMAN = 30;
+const DIE_AI = 24;
+const TRAY_X = RIGHT_X + 12;
+const TRAY_PITCH = 38;
+const TRAY_PER_ROW = 20;
+const TRAY_ROW0_Y = CTX_Y + 40;
+const TRAY_ROW1_Y = CTX_Y + 76;
+
+const REWARD_STEP_MS = 900;
+const BANNER_MS = 1700;
+const FLASH_MS = 900;
+
+const ORDINALS = ["1st", "2nd", "3rd", "4th"];
+const DIM_GRAY = 0x57506e;
+
+const short = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const ordinal = (i) => ORDINALS[i] ?? `${i + 1}th`;
+const rtxt = (s, size, color, extra = {}) => txt(s, size, color, { anchor: 1, ...extra });
+
+export function buildGameScene(app, ctx, game, onNewGame) {
   const scene = new Container();
   scene.addChild(new Graphics().rect(0, 0, W, H).fill(C.bg));
   const dyn = new Container();
-  scene.addChild(dyn);
+  const diceLayer = new Container();
+  const fxLayer = new Container();
+  scene.addChild(dyn, diceLayer, fxLayer);
 
-  const view = { sel: new Set(), err: "" };
+  const view = {
+    staging: newStaging(),
+    keepSel: new Set(),
+    growthN: 0,
+    err: "",
+    busy: false, // input locked while a roll animation plays
+    dieViews: new Map(), // die id -> die container
+    slotRects: [],
+    banner: null, // { text, color, until }
+    slotFlash: null, // { slotIndex, color, until }
+    lastEvent: 0,
+    rewardEvent: null,
+    rewardList: null, // per-claim presentation rows
+    nightSnap: null, // { food[], pop[], eliminated:Set } before last reward step
+    turnKey: null,
+  };
 
-  function humanTurn(a) {
-    return (
-      a &&
-      a.tribeId === 0 &&
-      game.tribes[0].isHuman &&
-      !game.tribes[0].eliminated
-    );
+  // fx expiry (banner / slot flash) without a full re-render
+  app.ticker.add(() => {
+    const now = performance.now();
+    let changed = false;
+    if (view.banner && now > view.banner.until) {
+      view.banner = null;
+      changed = true;
+    }
+    if (view.slotFlash && now > view.slotFlash.until) {
+      view.slotFlash = null;
+      changed = true;
+    }
+    if (changed) paintFx();
+  });
+
+  const humanTurn = (a) =>
+    a && a.tribeId === 0 && game.tribes[0].isHuman && !game.tribes[0].eliminated;
+  const rerollTurn = () => {
+    const a = game.awaiting;
+    return a && a.type === "reroll" && humanTurn(a);
+  };
+
+  // ---- banner / slot flash (transient fx layer) ----
+
+  function setBanner(text, color) {
+    view.banner = text
+      ? { text, color: color ?? C.text, until: performance.now() + BANNER_MS }
+      : null;
+    paintFx();
+  }
+
+  function flashSlot(slotIndex, color) {
+    view.slotFlash = { slotIndex, color, until: performance.now() + FLASH_MS };
+    paintFx();
+  }
+
+  function paintFx() {
+    destroyAll(fxLayer);
+    if (view.slotFlash) {
+      const r = view.slotRects[view.slotFlash.slotIndex];
+      if (r)
+        fxLayer.addChild(
+          new Graphics()
+            .roundRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 10)
+            .stroke({ width: 3, color: view.slotFlash.color })
+        );
+    }
+    if (view.banner) {
+      const t = txt(short(view.banner.text, 80), 17, view.banner.color, { bold: true });
+      const w = t.width + 28;
+      const h = t.height + 14;
+      fxLayer.addChild(
+        new Graphics()
+          .roundRect(W / 2 - w / 2, 128, w, h, 8)
+          .fill({ color: 0x120e1e, alpha: 0.92 })
+          .stroke({ width: 1.5, color: view.banner.color })
+      );
+      t.x = W / 2 - t.width / 2;
+      t.y = 128 + (h - t.height) / 2;
+      fxLayer.addChild(t);
+    }
+  }
+
+  // ---- dice views (persistent, keyed by die id) ----
+
+  function dieView(id, size, interactive) {
+    let dv = view.dieViews.get(id);
+    if (dv && (dv.destroyed || dv.dieSize !== size)) {
+      dv.destroy({ children: true });
+      view.dieViews.delete(id);
+      dv = null;
+    }
+    if (!dv) {
+      dv = makeDie({
+        size,
+        value: 1,
+        interactive,
+        canDrag: () =>
+          interactive && !view.busy && isHumanClaimTurn(game) && !dv.isDragging(),
+        onDrop: (die, g) => onHumanDieDrop(die, g),
+        onTap: (die) => onHumanDieTap(die),
+        dragTarget: app.stage,
+      });
+      dv.dieId = id;
+      view.dieViews.set(id, dv);
+      diceLayer.addChild(dv);
+    }
+    return dv;
+  }
+
+  function trayPos(i) {
+    const col = i % TRAY_PER_ROW;
+    const row = Math.floor(i / TRAY_PER_ROW);
+    return { x: TRAY_X + col * TRAY_PITCH, y: row === 0 ? TRAY_ROW0_Y : TRAY_ROW1_Y };
+  }
+
+  function slotCellPos(slotIndex, cellIndex) {
+    const r = view.slotRects[slotIndex];
+    return { x: SLOT_X + 10 + cellIndex * 36, y: (r ? r.y : 0) + 54 };
+  }
+
+  function tribeDicePos(tribeId, i) {
+    const ty = ROW0_Y + tribeId * ROW_PITCH;
+    return { x: RIGHT_X + 14 + i * 29, y: ty + 50 };
+  }
+
+  // Reconcile dice views with the model; called at the end of render().
+  // The die currently under the pointer is never repositioned.
+  function updateDice() {
+    const live = new Set();
+    const human = game.tribes[0];
+    const st = view.staging;
+
+    // human tray dice (pool = not consumed, not staged). Hidden while the
+    // reward/night panels cover the tray area.
+    const showHuman = game.phase === "reroll" || game.phase === "claiming";
+    poolDice(st, game).forEach((d, i) => {
+      live.add(d.id);
+      const dv = dieView(d.id, DIE_HUMAN, true);
+      dv.visible = showHuman;
+      const p = trayPos(i);
+      if (!dv.isDragging()) {
+        dv.x = p.x;
+        dv.baseY = p.y;
+      }
+      dv.setValue(d.value);
+      const s = rerollTurn()
+        ? view.keepSel.has(d.id)
+          ? "kept"
+          : "normal"
+        : game.phase === "claiming"
+          ? "normal"
+          : "dim";
+      if (dv.stateName() !== s) dv.state(s);
+    });
+
+    // human staged dice -> the active slot's tray
+    if (st.slot !== null) {
+      const ss = stagedState(st, game, st.slot);
+      st.staged.forEach((id, i) => {
+        live.add(id);
+        const dv = dieView(id, DIE_HUMAN, true);
+        dv.visible = showHuman;
+        const p = slotCellPos(st.slot, i);
+        if (!dv.isDragging()) {
+          dv.x = p.x;
+          dv.baseY = p.y;
+        }
+        const d = human.dice.find((x) => x.id === id);
+        if (d) dv.setValue(d.value);
+        const s = ss === "valid" ? "valid" : ss === "invalid" ? "invalid" : "staged";
+        if (dv.stateName() !== s) dv.state(s);
+      });
+    }
+
+    // AI dice (static display in tribe rows)
+    for (const t of game.tribes) {
+      if (t.id === 0) continue;
+      t.dice.forEach((d, i) => {
+        live.add(d.id);
+        const dv = dieView(d.id, DIE_AI, false);
+        const p = tribeDicePos(t.id, i);
+        if (!dv.isDragging()) {
+          dv.x = p.x;
+          dv.baseY = p.y;
+        }
+        dv.setValue(d.value);
+        const s = t.eliminated ? "dim" : "normal";
+        if (dv.stateName() !== s) dv.state(s);
+      });
+    }
+
+    for (const [id, dv] of [...view.dieViews]) {
+      if (!live.has(id)) {
+        dv.destroy({ children: true });
+        view.dieViews.delete(id);
+      }
+    }
+  }
+
+  // ---- human die interaction ----
+
+  function onHumanDieTap(die) {
+    if (!rerollTurn()) return;
+    const id = die.dieId;
+    if (view.keepSel.has(id)) view.keepSel.delete(id);
+    else view.keepSel.add(id);
+    view.err = "";
+    render();
+  }
+
+  function onHumanDieDrop(die, global) {
+    if (!isHumanClaimTurn(game)) {
+      render();
+      return;
+    }
+    const id = die.dieId;
+    let target = null;
+    for (let i = 0; i < game.slots.length; i++) {
+      const r = view.slotRects[i];
+      if (
+        r &&
+        global.x >= r.x &&
+        global.x <= r.x + r.w &&
+        global.y >= r.y &&
+        global.y <= r.y + r.h &&
+        canStageInto(game, view.staging, i)
+      ) {
+        target = i;
+        break;
+      }
+    }
+    if (
+      target !== null &&
+      view.staging.slot === target &&
+      !view.staging.staged.includes(id) &&
+      view.staging.staged.length >= game.slots[target].def.diceRequired
+    ) {
+      // tray full: replace the last staged die (it returns to the pool)
+      unstage(view.staging, view.staging.staged[view.staging.staged.length - 1]);
+    }
+    dropDie(view.staging, game, id, target);
+    view.err = "";
+    render();
+  }
+
+  // ---- human actions (intent -> model) ----
+
+  function doHumanReroll() {
+    const t = game.tribes[0];
+    const ids = t.dice.filter((d) => !view.keepSel.has(d.id)).map((d) => d.id);
+    if (ids.length === 0) return;
+    const before = snapshotDice();
+    try {
+      game.doReroll(0, ids);
+      view.err = "";
+    } catch (e) {
+      view.err = e.message;
+      render();
+      return;
+    }
+    render();
+    animateChangedDice(before, 0, 450, () => {
+      view.busy = false;
+      render();
+      pump();
+    });
+  }
+
+  function finishHumanReroll() {
+    game.finishReroll(0);
+    view.keepSel.clear();
+    view.err = "";
+    render();
+    pump();
+  }
+
+  function doClaim(slotIndex) {
+    const ids = stagedDieIds(view.staging, slotIndex);
+    if (ids.length === 0) {
+      view.err = "stage dice into that slot first";
+      render();
+      return;
+    }
+    try {
+      game.submitClaim(0, slotIndex, ids);
+      view.staging = newStaging();
+      view.err = "";
+    } catch (e) {
+      // the model is the authority; keep the staged dice for retry
+      view.err = e.message;
+      render();
+      return;
+    }
+    render();
+    pump();
+  }
+
+  function passTurn() {
+    game.passClaim(0);
+    view.staging = newStaging();
+    view.err = "";
+    render();
+    pump();
+  }
+
+  function returnDice() {
+    view.staging = newStaging();
+    render();
+  }
+
+  function resolveHumanTarget(targetId) {
+    try {
+      game.resolveWithTarget(0, targetId);
+      view.err = "";
+    } catch (e) {
+      view.err = e.message;
+    }
+    render();
+    pump();
+  }
+
+  function buyGrowthN() {
+    const n = view.growthN;
+    if (n <= 0) return;
+    try {
+      game.buyGrowth(0, n);
+      view.err = "";
+    } catch (e) {
+      view.err = e.message;
+    }
+    view.growthN = 0;
+    render();
+    pump();
+  }
+
+  function finishHumanGrowth() {
+    game.finishGrowth(0);
+    view.growthN = 0;
+    view.err = "";
+    render();
+    pump();
+  }
+
+  // ---- animations (cosmetic only; the model decides all values) ----
+
+  function snapshotDice() {
+    const m = new Map();
+    for (const t of game.tribes) for (const d of t.dice) m.set(d.id, d.value);
+    return m;
+  }
+
+  function tumblePromise(dice, finals, ms) {
+    return new Promise((res) => tumble(app, dice, finals, ms, res));
+  }
+
+  function animateChangedDice(before, tribeId, ms, onDone) {
+    const t = game.tribes[tribeId];
+    const changed = t.dice.filter((d) => {
+      const bv = before.get(d.id);
+      return bv !== undefined && bv !== d.value;
+    });
+    if (changed.length === 0) {
+      onDone();
+      return;
+    }
+    const myGen = ctx.gen;
+    view.busy = true;
+    const views = changed.map((d) => view.dieViews.get(d.id)).filter(Boolean);
+    tumblePromise(views, changed.map((d) => d.value), ms).then(() => {
+      if (ctx.gen === myGen) onDone();
+    });
+  }
+
+  async function animateInitialRoll() {
+    const myGen = ctx.gen;
+    const views = [];
+    const finals = [];
+    for (const t of game.tribes)
+      for (const d of t.dice) {
+        const dv = view.dieViews.get(d.id);
+        if (dv) {
+          views.push(dv);
+          finals.push(d.value);
+        }
+      }
+    view.busy = true;
+    setBanner(`Event ${game.eventIndex}: ${game.card.name} — rolling`, C.yellow);
+    await tumblePromise(views, finals, 700);
+    if (ctx.gen !== myGen) return;
+    view.busy = false;
+    setBanner(null);
+  }
+
+  async function animateAiAction(before) {
+    const myGen = ctx.gen;
+    const t = game.tribes[before.tribeId];
+    const newClaim =
+      game.claims.length > before.claimCount ? game.claims[game.claims.length - 1] : null;
+
+    view.busy = true;
+    render();
+    const changed = t.dice.filter((d) => {
+      const bv = before.dice.get(d.id);
+      return bv !== undefined && bv !== d.value;
+    });
+    if (changed.length > 0) {
+      const views = changed.map((d) => view.dieViews.get(d.id)).filter(Boolean);
+      await tumblePromise(views, changed.map((d) => d.value), 450);
+      if (ctx.gen !== myGen) return;
+    }
+    view.busy = false;
+    if (newClaim) flashSlot(newClaim.slotIndex, t.color);
+    const line = game.log.slice(before.logLen).find((l) => !l.startsWith("==="));
+    if (line) setBanner(line, t.color);
+    render();
   }
 
   // ---- top bar ----
+
   function renderTop() {
     const a = game.awaiting;
     let action = "-";
+    let actionColor = C.faint;
     if (game.phase === "over") {
-      action = game.winner
-        ? `WINNER: ${game.winner.name}`
-        : "DRAW - all tribes perished";
+      action = game.winner ? `WINNER: ${game.winner.name}` : "DRAW — all tribes perished";
+      actionColor = game.winner && game.winner.isHuman ? C.green : C.red;
     } else if (a) {
       const t = game.tribes[a.tribeId];
-      const verb =
-        a.type === "reroll"
-          ? "select dice to reroll, or finish"
-          : a.type === "claim"
-            ? "select dice + click a slot (or Pass)"
-            : a.type === "target"
-              ? "click a highlighted tribe to target"
-              : "buy growth, or finish Night";
-      action = `${t.name}: ${verb}`;
+      const you = a.tribeId === 0;
+      if (a.type === "reroll")
+        action = you
+          ? "your turn: click dice to mark KEEP, then REROLL / DONE ROLLING"
+          : `${t.name} is rolling`;
+      else if (a.type === "claim")
+        action = you
+          ? "your turn: drag dice into a slot, then CLAIM (or Pass)"
+          : `claiming: ${t.name}`;
+      else if (a.type === "target")
+        action = you ? "pick a target: click a highlighted tribe" : `${t.name} is picking a target`;
+      else action = you ? "your turn: buy growth, or finish Night" : `night: ${t.name}`;
+    } else {
+      action =
+        game.phase === "reward"
+          ? "resolving rewards in claim order…"
+          : game.phase === "night"
+            ? "night"
+            : "…";
     }
-    const order = ORDER_RULES[game.card.orderRule].label;
     dyn.addChild(
       place(
         txt(
-          `Event ${game.eventIndex}: ${game.card.name}   |   claim order: ${order}   |   phase: ${game.phase.toUpperCase()}`,
+          `Event ${game.eventIndex}: ${game.card.name}   ·   ${ORDER_RULES[game.card.orderRule].label}   ·   ${game.phase.toUpperCase()}`,
           14,
           C.yellow,
           { bold: true }
@@ -113,361 +548,665 @@ export function buildGameScene(ctx, game, onNewGame) {
     );
     dyn.addChild(
       place(
-        txt(view.err ? `ERROR: ${view.err}` : `action: ${action}`, 13, view.err ? C.red : C.faint),
+        txt(view.err ? `ERROR: ${view.err}` : action, 12, view.err ? C.red : actionColor),
         12,
-        28
+        27
       )
     );
-    button(dyn, W - 140, 8, 130, 28, "Quit to setup", onNewGame);
+    button(dyn, W - 150, 8, 140, 28, "Quit to setup", onNewGame);
   }
 
-  // ---- slots panel ----
-  // Slot state from the HUMAN tribe's perspective:
-  //   impossible : slot needs more dice than the human has left (dimmed)
-  //   no-match   : enough dice, but no current combination satisfies it
-  //   available  : a legal claim exists with the current dice
-  // (claimed / neutral outside the claiming phase.)
-  function slotState(slot) {
-    const human = game.tribes[0];
-    if (slot.claimedBy !== null) return "claimed";
-    if (game.phase !== "claiming" || human.eliminated) return "neutral";
-    if (slot.def.diceRequired > human.dice.length) return "impossible";
-    if (!hasLegalClaim(human.dice, slot.def)) return "no-match";
-    return "available";
-  }
+  // ---- event card / slots ----
 
-  function renderSlots() {
-    const x = 8;
-    const y = 48;
-    const w = 364;
-    dyn.addChild(panelRect(x, y, w, 448));
-    dyn.addChild(place(txt(`EVENT CARD - ${game.card.name}`, 14, C.text, { bold: true }), x + 10, y + 8));
-    dyn.addChild(place(txt(`order: ${ORDER_RULES[game.card.orderRule].label}`, 11, C.faint), x + 10, y + 26));
+  function renderCard() {
+    dyn.addChild(panel(CARD_X, CARD_Y, CARD_W, CARD_H));
+    dyn.addChild(
+      place(
+        txt(`EVENT CARD — ${game.card.name}`, 14, C.text, { bold: true }),
+        CARD_X + 10,
+        CARD_Y + 8
+      )
+    );
+    dyn.addChild(
+      place(
+        txt(`claim order rule: ${ORDER_RULES[game.card.orderRule].label}`, 11, C.faint),
+        CARD_X + 10,
+        CARD_Y + 27
+      )
+    );
 
-    const a = game.awaiting;
-    const canPick = humanTurn(a) && a.type === "claim";
-    const human = game.tribes[0];
-    const dimGray = 0x57506e;
+    const n = game.slots.length;
+    const slotH = Math.min(98, Math.floor((CARD_H - 44 - 8) / n));
+    const st = view.staging;
+    const humanClaim = isHumanClaimTurn(game);
+    view.slotRects = new Array(n);
+
     game.slots.forEach((slot, i) => {
-      const sy = y + 44 + i * 49;
-      const state = slotState(slot);
-      const claimed = state === "claimed";
-      const pickable = state === "available" && canPick;
-      dyn.addChild(slotBg(x + 6, sy, w - 12, 45, state, pickable));
+      const sy = CARD_Y + 44 + i * (slotH + 1);
+      const state = slotDisplayState(game, st, i);
+      view.slotRects[i] = { x: SLOT_X, y: sy, w: SLOT_W, h: slotH };
+      const ss = state === "staging" ? stagedState(st, game, i) : null;
+      const imp = state === "impossible";
 
-      let nameColor = C.text;
-      let descColor = C.faint;
-      let rewardColor = C.green;
-      let tag = "";
+      let bg = 0x1f1839;
+      let border = C.border;
+      let borderW = 1;
       if (state === "claimed") {
-        nameColor = C.faint;
-        descColor = 0x776f95;
-        rewardColor = 0x776f95;
-      } else if (state === "impossible") {
-        nameColor = dimGray;
-        descColor = dimGray;
-        rewardColor = dimGray;
-        tag = `  [needs ${slot.def.diceRequired} dice, you have ${human.dice.length}]`;
-      } else if (state === "no-match") {
-        rewardColor = 0x776f95;
-        tag = `  [no match with your dice]`;
+        bg = 0x1c1533;
+        border = 0x3a3355;
+      } else if (imp) {
+        bg = 0x120e1e;
+        border = 0x2b2444;
+      } else if (state === "staging") {
+        if (ss === "valid") {
+          bg = 0x14301f;
+          border = C.green;
+          borderW = 2;
+        } else if (ss === "invalid") {
+          bg = 0x331512;
+          border = C.red;
+          borderW = 2;
+        } else {
+          bg = 0x182547;
+          border = C.blue;
+          borderW = 2;
+        }
+      }
+      dyn.addChild(
+        new Graphics()
+          .roundRect(SLOT_X, sy, SLOT_W, slotH, 8)
+          .fill(bg)
+          .stroke({ width: borderW, color: border })
+      );
+
+      dyn.addChild(
+        place(
+          txt(`${i + 1}. ${slot.def.name}`, 12, state === "claimed" ? 0x8a82a8 : imp ? DIM_GRAY : C.text, {
+            bold: true,
+          }),
+          SLOT_X + 10,
+          sy + 5
+        )
+      );
+      dyn.addChild(place(txt(describeSlot(slot.def), 11, imp ? DIM_GRAY : C.faint), SLOT_X + 10, sy + 22));
+      dyn.addChild(
+        place(
+          txt(`Reward: ${describeReward(slot.def.reward)}`, 11, imp ? DIM_GRAY : C.green),
+          SLOT_X + 10,
+          sy + 38
+        )
+      );
+
+      // dice tray cells
+      const need = slot.def.diceRequired;
+      let cellBg = 0x1a1430;
+      let cellBorder = 0x3a3355;
+      if (state === "staging") {
+        if (ss === "valid") {
+          cellBg = 0x14301f;
+          cellBorder = C.green;
+        } else if (ss === "invalid") {
+          cellBg = 0x331512;
+          cellBorder = C.red;
+        } else {
+          cellBg = 0x182547;
+          cellBorder = C.blue;
+        }
+      } else if (state === "claimed") {
+        cellBg = 0x171226;
+        cellBorder = 0x2b2444;
+      } else if (imp) {
+        cellBg = 0x100c1b;
+        cellBorder = 0x241f36;
+      }
+      for (let c = 0; c < need; c++) {
+        dyn.addChild(
+          new Graphics()
+            .roundRect(SLOT_X + 10 + c * 36, sy + 54, 30, 30, 5)
+            .fill(cellBg)
+            .stroke({ width: 1, color: cellBorder })
+        );
       }
 
-      dyn.addChild(place(
-        txt(`${i + 1}. ${slot.def.name}`, 12, nameColor, { bold: true }),
-        x + 12,
-        sy + 3
-      ));
-      if (claimed) {
-        dyn.addChild(place(
-          txt(`claimed: ${game.tribes[slot.claimedBy].name}`, 11, game.tribes[slot.claimedBy].color),
-          x + 12,
-          sy + 19
-        ));
+      // right-side info (and CLAIM / return buttons while staging)
+      const rx = SLOT_X + SLOT_W - 10;
+      if (state === "claimed") {
+        const by = game.tribes[slot.claimedBy];
+        dyn.addChild(place(rtxt(`claimed by ${by.name}`, 11, by.color, { bold: true }), rx, sy + 12));
+        const pending = game.phase === "claiming" || game.phase === "reward";
+        let res = "reward queued";
+        if (!pending && view.rewardList) {
+          const row = view.rewardList.find((r) => r.slotIndex === i);
+          if (row) res = row.result || "resolved";
+        }
+        dyn.addChild(place(rtxt(short(res, 26), 10, 0x776f95), rx, sy + 28));
+      } else if (imp) {
+        dyn.addChild(place(rtxt(`needs ${need} dice`, 11, DIM_GRAY), rx, sy + 10));
+        dyn.addChild(place(rtxt(`you have ${game.tribes[0].dice.length}`, 10, DIM_GRAY), rx, sy + 26));
+      } else if (state === "no-match") {
+        dyn.addChild(place(rtxt("no match with your dice", 10, DIM_GRAY), rx, sy + 12));
+      } else if (state === "staging" && humanClaim) {
+        const yInfo = sy + 38;
+        if (ss === "incomplete")
+          dyn.addChild(
+            place(
+              rtxt(
+                `need ${need - st.staged.length} more die${need - st.staged.length === 1 ? "" : "s"}`,
+                11,
+                C.blue,
+                { bold: true }
+              ),
+              rx,
+              yInfo
+            )
+          );
+        else if (ss === "invalid")
+          dyn.addChild(place(rtxt("not a valid set", 11, C.red, { bold: true }), rx, yInfo));
+        else dyn.addChild(place(rtxt("valid — press CLAIM", 11, C.green, { bold: true }), rx, yInfo));
+      } else if (state === "available" && humanClaim) {
+        dyn.addChild(place(rtxt("open", 10, 0x776f95), rx, sy + 12));
       }
-      dyn.addChild(place(
-        txt(describeSlot(slot.def) + tag, 11, descColor),
-        x + 12,
-        sy + (claimed ? 33 : 19)
-      ));
-      dyn.addChild(place(
-        txt(describeReward(slot.def.reward), 11, rewardColor),
-        x + 12,
-        sy + (claimed ? 45 : 33)
-      ));
-      if (pickable) hitRect(dyn, x + 6, sy, w - 12, 45, () => tryClaim(i));
+
+      if (state === "staging" && humanClaim) {
+        button(
+          dyn,
+          SLOT_X + SLOT_W - 102,
+          sy + 4,
+          92,
+          26,
+          "CLAIM",
+          () => doClaim(i),
+          ss === "valid",
+          { accent: C.green, bold: true }
+        );
+        if (st.staged.length > 0)
+          button(dyn, SLOT_X + SLOT_W - 102, sy + 56, 92, 24, "return", returnDice, true, {
+            font: 11,
+          });
+      }
     });
   }
 
-  function tryClaim(slotIndex) {
-    const ids = [...view.sel];
-    if (ids.length === 0) {
-      view.err = "select at least 1 of your dice first";
-      render();
-      return;
-    }
-    try {
-      game.submitClaim(0, slotIndex, ids);
-      view.sel.clear();
-      view.err = "";
-    } catch (e) {
-      view.err = e.message;
-    }
-    render();
-    pump();
+  // ---- tribes ----
+
+  function tribeStatus(t) {
+    if (t.eliminated) return { text: "ELIMINATED", color: C.red };
+    const a = game.awaiting;
+    if (game.phase === "claiming" && game.doneTribes.has(t.id))
+      return { text: "out of the loop", color: C.dim };
+    if (a && a.tribeId === t.id && game.phase !== "over")
+      return { text: t.id === 0 ? "YOUR TURN" : "acting", color: C.yellow };
+    if (game.phase === "reroll" && game.rerollDone.has(t.id))
+      return { text: "locked", color: C.dim };
+    return null;
   }
 
-  // ---- tribes panel ----
   function renderTribes() {
-    const x = 380;
-    const y = 48;
-    const w = 572;
-    dyn.addChild(panelRect(x, y, w, 448));
-    dyn.addChild(place(txt("TRIBES", 14, C.text, { bold: true }), x + 10, y + 8));
+    dyn.addChild(panel(RIGHT_X, TRIBE_Y, RIGHT_W, TRIBE_H));
+    dyn.addChild(place(txt("TRIBES", 13, C.text, { bold: true }), RIGHT_X + 10, TRIBE_Y + 8));
 
     const a = game.awaiting;
-    const targeting = humanTurn(a) && a.type === "target";
+    const targeting = a && a.type === "target" && humanTurn(a);
     const validTargets = targeting
       ? validHostileTargets(game.tribes, 0, a.effect).map((t) => t.id)
       : [];
-    const orderPos = (id) => game.claimOrder.indexOf(id);
 
     game.tribes.forEach((t) => {
-      const ty = y + 30 + t.id * 104;
+      const ty = ROW0_Y + t.id * ROW_PITCH;
       const isTurn = a && a.tribeId === t.id && game.phase !== "over";
-      dyn.addChild(tribeBg(x + 6, ty, w - 12, 98, t, isTurn, validTargets));
-      dyn.addChild(new Graphics().rect(x + 14, ty + 8, 12, 12).fill(t.color));
+      const status = tribeStatus(t);
+      let bg = 0x1f1839;
+      let border = 0x3a3355;
+      let borderW = 1;
+      if (t.eliminated) bg = 0x171126;
+      else if (validTargets.includes(t.id)) {
+        bg = 0x3a1f2a;
+        border = C.red;
+        borderW = 2;
+      } else if (isTurn) {
+        bg = 0x2e2552;
+        border = C.yellow;
+        borderW = 2;
+      }
+      dyn.addChild(
+        new Graphics()
+          .roundRect(RIGHT_X + 6, ty, RIGHT_W - 12, 88, 8)
+          .fill(bg)
+          .stroke({ width: borderW, color: border })
+      );
+      dyn.addChild(
+        new Graphics().rect(RIGHT_X + 14, ty + 9, 14, 14).fill(t.eliminated ? 0x4a4460 : t.color)
+      );
 
+      const orderPos = game.claimOrder.indexOf(t.id);
       const orderTxt =
-        game.phase === "claiming" && orderPos(t.id) >= 0
-          ? `  (claim order: ${orderPos(t.id) + 1})`
+        (game.phase === "claiming" || game.phase === "reward") && orderPos >= 0
+          ? `  ·  claims ${ordinal(orderPos)}`
           : "";
-      dyn.addChild(place(
-        txt(`${t.name}${t.isHuman ? " (you)" : ""}${orderTxt}`, 13, t.eliminated ? C.dim : C.text, { bold: true }),
-        x + 32,
-        ty + 5
-      ));
-      const status = t.eliminated
-        ? "ELIMINATED"
-        : game.phase === "claiming" && game.doneTribes.has(t.id)
-          ? "out of the loop"
-          : isTurn
-            ? "<-- your action"
-            : "";
+      dyn.addChild(
+        place(
+          txt(
+            `${t.name}${t.isHuman ? " (you)" : ""}${orderTxt}`,
+            13,
+            t.eliminated ? C.dim : C.text,
+            { bold: true }
+          ),
+          RIGHT_X + 36,
+          ty + 5
+        )
+      );
       if (status)
-        dyn.addChild(place(
-          txt(status, 11, t.eliminated ? C.red : C.yellow, { bold: true }),
-          x + w - 150,
-          ty + 7
-        ));
-
-      const rerollTxt =
-        game.phase === "reroll" && !t.eliminated
-          ? `    ${t.freeRerolls} free reroll${t.freeRerolls === 1 ? "" : "s"} left`
-          : "";
-      dyn.addChild(place(
-        txt(`Pop ${t.population}    Food ${t.food}    Tools ${t.tools}${rerollTxt}`, 13, t.eliminated ? C.dim : C.faint),
-        x + 14,
-        ty + 26
-      ));
-
-      const clickable =
-        !t.eliminated &&
-        t.id === 0 &&
-        humanTurn(a) &&
-        (a.type === "claim" || a.type === "reroll");
-      if (t.dice.length === 0) {
-        dyn.addChild(place(txt(t.eliminated ? "" : "no dice", 11, C.dim), x + 14, ty + 50));
-      }
-      t.dice.forEach((d, di) => {
-        dieSquare(
-          dyn,
-          x + 14 + di * 38,
-          ty + 44,
-          d.value,
-          clickable ? () => toggleDie(d.id) : null,
-          view.sel.has(d.id)
+        dyn.addChild(
+          place(
+            rtxt(status.text, 11, status.color, { bold: true }),
+            RIGHT_X + RIGHT_W - 12,
+            ty + 8
+          )
         );
-      });
 
-      if (validTargets.includes(t.id)) {
-        hitRect(dyn, x + 6, ty, w - 12, 98, () => {
-          try {
-            game.resolveWithTarget(0, t.id);
-            view.err = "";
-          } catch (e) {
-            view.err = e.message;
-          }
-          render();
-          pump();
-        });
+      const rr =
+        game.phase === "reroll" && !t.eliminated ? `  ·  ${t.freeRerolls} free rerolls` : "";
+      dyn.addChild(
+        place(
+          txt(`Pop ${t.population}  ·  Food ${t.food}  ·  Tools ${t.tools}${rr}`, 13, t.eliminated ? C.dim : C.faint),
+          RIGHT_X + 14,
+          ty + 28
+        )
+      );
+      if (t.id === 0) {
+        dyn.addChild(
+          place(txt("dice: in YOUR DICE tray below", 11, C.dim), RIGHT_X + 14, ty + 54)
+        );
       }
+
+      if (validTargets.includes(t.id))
+        hitRect(dyn, RIGHT_X + 6, ty, RIGHT_W - 12, 88, () => resolveHumanTarget(t.id));
     });
   }
 
-  function toggleDie(dieId) {
-    if (view.sel.has(dieId)) view.sel.delete(dieId);
-    else view.sel.add(dieId);
-    view.err = "";
-    render();
+  // ---- context area A: dice tray / rewards / night ----
+
+  function renderContextA() {
+    if (game.phase === "reward") {
+      renderRewards();
+      return;
+    }
+    if (game.phase === "night") {
+      renderNight();
+      return;
+    }
+    // reroll / claiming: the human's dice tray (dice live in diceLayer)
+    const n = poolDice(view.staging, game).length;
+    dyn.addChild(panel(RIGHT_X, CTX_Y, RIGHT_W, CTX_H));
+    dyn.addChild(place(txt(`YOUR DICE (${n})`, 12, C.text, { bold: true }), TRAY_X, CTX_Y + 6));
+    const hint = rerollTurn()
+      ? "click a die to mark KEEP — unkept dice are rerolled"
+      : isHumanClaimTurn(game)
+        ? "drag dice into a slot to stage them (drop outside to return)"
+        : "";
+    if (hint) dyn.addChild(place(txt(hint, 11, C.faint), TRAY_X, CTX_Y + 24));
   }
 
-  // ---- bottom: actions + log ----
-  function renderBottom() {
-    const x = 8;
-    const y = 504;
-    const w = 364;
-    dyn.addChild(panelRect(x, y, w, 132));
-    dyn.addChild(place(txt("ACTIONS", 13, C.text, { bold: true }), x + 10, y + 8));
+  function renderRewards() {
+    // rewards occupy both context areas (the dice tray is no longer needed)
+    const h = CTX_H + ACT_H + 6;
+    dyn.addChild(panel(RIGHT_X, CTX_Y, RIGHT_W, h));
+    dyn.addChild(
+      place(txt("REWARDS — resolve in claim order", 13, C.text, { bold: true }), RIGHT_X + 12, CTX_Y + 8)
+    );
+    dyn.addChild(
+      place(rtxt("claiming is over; rewards were queued and resolve one at a time", 10, C.faint),
+        RIGHT_X + RIGHT_W - 12, CTX_Y + 12)
+    );
+    const rows = view.rewardList || [];
+    if (rows.length === 0) {
+      dyn.addChild(place(txt("no claims this event", 11, C.faint), RIGHT_X + 12, CTX_Y + 38));
+      return;
+    }
+    const rowH = Math.min(24, Math.floor((h - 52) / rows.length));
+    rows.forEach((r, i) => {
+      const y = CTX_Y + 34 + i * rowH;
+      const t = game.tribes[r.tribeId];
+      const slot = game.slots[r.slotIndex];
+      dyn.addChild(
+        place(txt(`${i + 1}. ${t.name} · ${slot.def.name}`, 11, t.eliminated ? C.dim : t.color, { bold: true }),
+          RIGHT_X + 12,
+          y
+        )
+      );
+      dyn.addChild(place(txt(short(describeReward(slot.def.reward), 34), 11, C.faint), RIGHT_X + 250, y));
+      let stateTxt;
+      let stateColor;
+      if (r.state === "queued") {
+        stateTxt = "queued";
+        stateColor = C.dim;
+      } else if (r.state === "resolving") {
+        stateTxt = "resolving…";
+        stateColor = C.yellow;
+      } else if (r.state === "target") {
+        stateTxt = r.result;
+        stateColor = C.yellow;
+      } else if (r.state === "voided" || r.state === "fizzled") {
+        stateTxt = r.result;
+        stateColor = C.red;
+      } else {
+        stateTxt = r.result;
+        stateColor = C.green;
+      }
+      dyn.addChild(
+        place(rtxt(short(stateTxt, 40), 11, stateColor, { bold: r.state === "target" }),
+          RIGHT_X + RIGHT_W - 12, y)
+      );
+    });
+  }
 
+  function nightRowText(t, growingId) {
+    const snap = view.nightSnap;
+    if (!snap) return { text: `${t.name}: …`, waiting: true };
+    if (t.eliminated) {
+      const fedThisNight = growingId !== null ? t.id < growingId : true;
+      if (fedThisNight && !snap.eliminated.has(t.id)) {
+        const fb = snap.food[t.id];
+        const pb = snap.pop[t.id];
+        const fed = Math.min(pb, fb);
+        return {
+          text: `${t.name}: ${fb} Food · feed ${fed} · starved ${pb - fed} · ELIMINATED (starved)`,
+          eliminated: true,
+        };
+      }
+      if (snap.eliminated.has(t.id)) return { text: `${t.name}: ELIMINATED earlier`, eliminated: true };
+      return { text: `${t.name}: ELIMINATED during rewards`, eliminated: true };
+    }
+    const fb = snap.food[t.id];
+    const pb = snap.pop[t.id];
+    const fed = Math.min(pb, fb);
+    const starved = pb - fed;
+    const left = fb - fed;
+    let s = `${t.name}: ${fb} Food · feed ${fed} · starved ${starved} · ${left} left`;
+    const grew = t.population - (pb - starved);
+    if (grew > 0) s += ` · +${grew} Pop`;
+    if (growingId === t.id) return { text: s + " · growing…", growing: true };
+    if (growingId !== null && t.id < growingId) return { text: s + " · done" };
+    return { text: s + " · waiting", waiting: true };
+  }
+
+  function renderNight() {
+    dyn.addChild(panel(RIGHT_X, CTX_Y, RIGHT_W, CTX_H));
+    dyn.addChild(
+      place(txt("NIGHT — feed in seat order, then grow", 13, C.text, { bold: true }), RIGHT_X + 12, CTX_Y + 8)
+    );
+    const a = game.awaiting;
+    const growingId = a && a.type === "growth" ? a.tribeId : null;
+    game.tribes.forEach((t) => {
+      const y = CTX_Y + 32 + t.id * 21;
+      const row = nightRowText(t, growingId);
+      const color = row.eliminated ? C.red : row.growing ? C.yellow : row.waiting ? C.dim : C.faint;
+      dyn.addChild(place(txt(row.text, 11, color), RIGHT_X + 12, y));
+    });
+  }
+
+  // ---- context area B: actions ----
+
+  function renderActions() {
+    if (game.phase === "reward" || game.phase === "over") return; // covered elsewhere
+    dyn.addChild(panel(RIGHT_X, ACT_Y, RIGHT_W, ACT_H));
     const a = game.awaiting;
     const t = game.tribes[0];
-    const bx = x + 10;
-    const bw = w - 20;
-    let by = y + 30;
 
-    if (game.phase === "over") {
-      button(dyn, bx, by, bw, 30, "New Game", onNewGame);
-    } else if (a && a.tribeId === 0) {
-      if (a.type === "reroll") {
-        const n = view.sel.size;
-        const hasFree = t.freeRerolls > 0;
-        const hasTool = t.tools > 0;
-        const costTxt = hasFree
-          ? `free, ${t.freeRerolls} left`
-          : hasTool
-            ? "costs 1 Tool"
-            : "no rerolls left";
-        button(
-          dyn, bx, by, bw, 30,
-          `Reroll selected (${n} die) — ${costTxt}`,
-          () => {
-            try {
-              game.doReroll(0, [...view.sel]);
-              view.err = "";
-            } catch (e) {
-              view.err = e.message;
-            }
-            render();
-            pump();
-          },
-          (hasFree || hasTool) && n > 0
-        );
-        by += 36;
-        button(dyn, bx, by, bw, 30, "Finish rolling (lock dice)", () => {
-          game.finishReroll(0);
-          view.err = "";
-          render();
-          pump();
-        });
-        by += 36;
-        button(
-          dyn, bx, by, bw, 30, "Clear selection",
-          () => { view.sel.clear(); render(); },
-          n > 0
-        );
-      } else if (a.type === "claim") {
-        button(dyn, bx, by, bw, 30, `Selected: ${view.sel.size} dice -> click a slot`, () => {}, false);
-        by += 36;
-        button(dyn, bx, by, bw, 30, "Pass (opt out of claiming)", () => {
-          game.passClaim(0);
-          view.sel.clear();
-          view.err = "";
-          render();
-          pump();
-        });
-        by += 36;
-        button(
-          dyn, bx, by, bw, 30, "Clear selection",
-          () => { view.sel.clear(); render(); },
-          view.sel.size > 0
-        );
-      } else if (a.type === "growth") {
-        button(
-          dyn, bx, by, bw, 30, "Buy 1 Population (2 Food)",
-          () => {
-            try {
-              game.buyGrowth(0, 1);
-              view.err = "";
-            } catch (e) {
-              view.err = e.message;
-            }
-            render();
-            pump();
-          },
-          t.food >= 2
-        );
-        by += 36;
-        button(dyn, bx, by, bw, 30, "Done with Night", () => {
-          game.finishGrowth(0);
-          view.err = "";
-          render();
-          pump();
-        });
-      } else if (a.type === "target") {
-        button(dyn, bx, by, bw, 30, "Click a highlighted tribe to target it", () => {}, false);
+    if (a && a.type === "reroll" && humanTurn(a)) {
+      const f = t.freeRerolls;
+      const m = t.tools;
+      const kept = t.dice.filter((d) => view.keepSel.has(d.id)).length;
+      const k = t.dice.length - kept;
+      const costTxt = f > 0 ? "FREE" : m > 0 ? "costs 1 Tool" : "none left";
+      dyn.addChild(
+        place(
+          txt(
+            `Free rerolls: ${f}   ·   Tools: ${m}   ·   next reroll: ${costTxt}   ·   ${kept} kept / ${k} will reroll`,
+            12,
+            C.faint
+          ),
+          RIGHT_X + 12,
+          ACT_Y + 8
+        )
+      );
+      let label;
+      let enabled;
+      if (k === 0) {
+        label = "All dice kept — press DONE ROLLING";
+        enabled = false;
+      } else if (f > 0) {
+        label = `REROLL ${k} dice — free (${f} left)`;
+        enabled = true;
+      } else if (m > 0) {
+        label = `REROLL ${k} dice — costs 1 Tool`;
+        enabled = true;
+      } else {
+        label = "No rerolls left — press DONE ROLLING";
+        enabled = false;
       }
+      button(dyn, RIGHT_X + 12, ACT_Y + 30, 380, 24, label, doHumanReroll, enabled, {
+        font: 12,
+        accent: C.blue,
+      });
+      button(dyn, RIGHT_X + 404, ACT_Y + 30, 200, 24, "DONE ROLLING", finishHumanReroll, true, {
+        font: 12,
+        accent: C.green,
+        bold: true,
+      });
+      return;
     }
+
+    if (a && a.type === "claim" && humanTurn(a)) {
+      const st = view.staging;
+      let info;
+      if (st.slot === null) info = "Drag dice into a slot to stage them, then press CLAIM (or Pass).";
+      else {
+        const slot = game.slots[st.slot];
+        const ss = stagedState(st, game, st.slot);
+        if (ss === "incomplete")
+          info = `Staging ${st.staged.length}/${slot.def.diceRequired} dice for "${slot.def.name}" — need ${slot.def.diceRequired - st.staged.length} more`;
+        else if (ss === "invalid")
+          info = `Staged ${st.staged.length} dice for "${slot.def.name}" — not a valid set`;
+        else info = `Staged ${st.staged.length} dice for "${slot.def.name}" — valid, press CLAIM on the slot`;
+      }
+      dyn.addChild(place(txt(info, 12, C.faint), RIGHT_X + 12, ACT_Y + 8));
+      button(dyn, RIGHT_X + 12, ACT_Y + 30, 240, 24, "Pass (opt out of claiming)", passTurn, true, {
+        font: 12,
+      });
+      button(
+        dyn,
+        RIGHT_X + 264,
+        ACT_Y + 30,
+        190,
+        24,
+        "Return dice to pool",
+        returnDice,
+        st.slot !== null,
+        { font: 12 }
+      );
+      return;
+    }
+
+    if (a && a.type === "growth" && humanTurn(a)) {
+      const maxG = Math.floor(t.food / GROWTH_FOOD_COST);
+      view.growthN = Math.max(0, Math.min(view.growthN, maxG));
+      const n = view.growthN;
+      dyn.addChild(
+        place(
+          txt(
+            `Buy Population: ${GROWTH_FOOD_COST} Food -> +1 Pop each   ·   you have ${t.food} Food   ·   max ${maxG}`,
+            12,
+            C.faint
+          ),
+          RIGHT_X + 12,
+          ACT_Y + 8
+        )
+      );
+      button(
+        dyn,
+        RIGHT_X + 12,
+        ACT_Y + 30,
+        34,
+        24,
+        "-",
+        () => {
+          view.growthN = Math.max(0, n - 1);
+          render();
+        },
+        n > 0,
+        { font: 14, bold: true }
+      );
+      const cnt = txt(String(n), 14, C.text, { bold: true });
+      cnt.anchor.set(0.5);
+      dyn.addChild(place(cnt, RIGHT_X + 67, ACT_Y + 42));
+      button(
+        dyn,
+        RIGHT_X + 84,
+        ACT_Y + 30,
+        34,
+        24,
+        "+",
+        () => {
+          view.growthN = Math.min(maxG, n + 1);
+          render();
+        },
+        n < maxG,
+        { font: 14, bold: true }
+      );
+      const cost = n * GROWTH_FOOD_COST;
+      button(
+        dyn,
+        RIGHT_X + 130,
+        ACT_Y + 30,
+        330,
+        24,
+        n > 0
+          ? `Buy ${n} Population — costs ${cost} Food (${t.food - cost} left)`
+          : "Buy Population",
+        buyGrowthN,
+        n > 0,
+        { font: 12, accent: C.green }
+      );
+      button(
+        dyn,
+        RIGHT_X + 472,
+        ACT_Y + 30,
+        180,
+        24,
+        "Done with Night",
+        finishHumanGrowth,
+        true,
+        { font: 12, accent: C.yellow, bold: true }
+      );
+      return;
+    }
+
+    if (a && a.type === "target" && humanTurn(a)) {
+      dyn.addChild(
+        place(txt("Pick a target: click a highlighted tribe panel.", 12, C.yellow), RIGHT_X + 12, ACT_Y + 10)
+      );
+      return;
+    }
+
+    // AI thinking / transition
+    const name = a ? game.tribes[a.tribeId].name : "…";
+    const what =
+      a?.type === "reroll" ? "is rolling" : a?.type === "claim" ? "is deciding" : "…";
+    dyn.addChild(place(txt(`${name} ${what}…`, 12, C.dim), RIGHT_X + 12, ACT_Y + 10));
   }
 
+  // ---- log / overlay ----
+
   function renderLog() {
-    const x = 380;
-    const y = 504;
-    const w = 572;
-    dyn.addChild(panelRect(x, y, w, 132));
-    dyn.addChild(place(txt("LOG (latest last)", 12, C.text, { bold: true }), x + 10, y + 6));
-    const lines = game.log.slice(-6);
+    dyn.addChild(panel(RIGHT_X, LOG_Y, RIGHT_W, LOG_H));
+    dyn.addChild(place(txt("LOG (latest last)", 12, C.text, { bold: true }), RIGHT_X + 10, LOG_Y + 6));
+    const lines = game.log.slice(-8);
     lines.forEach((line, i) => {
-      const bad =
-        line.includes("ELIMINATED") ||
-        line.includes("STARVED") ||
-        line.includes("VOIDED") ||
-        line.includes("FAILED");
+      const bad = /ELIMINATED|STARVED|VOIDED|FAILED|fizzles/.test(line);
       const isEvent = line.startsWith("===");
       const color = bad ? C.red : isEvent ? C.yellow : C.faint;
-      const t = txt(line.length > 88 ? line.slice(0, 87) + "..." : line, 11, color);
-      t.x = x + 10;
-      t.y = y + 24 + i * 16;
-      dyn.addChild(t);
+      dyn.addChild(place(txt(short(line, 96), 11, color), RIGHT_X + 10, LOG_Y + 24 + i * 16));
     });
   }
 
-  // ---- victory / draw overlay ----
   function renderOverlay() {
     if (game.phase !== "over") return;
     dyn.addChild(new Graphics().rect(0, 0, W, H).fill({ color: 0x000000, alpha: 0.72 }));
-    const msg = game.winner
-      ? `WINNER: ${game.winner.name}`
-      : "DRAW - all tribes perished";
+    const msg = game.winner ? `WINNER: ${game.winner.name}` : "DRAW — all tribes perished";
     const color = game.winner && game.winner.isHuman ? C.green : game.winner ? C.red : C.yellow;
-    dyn.addChild(place(txt(msg, 36, color, { bold: true, anchor: true }), W / 2, H / 2 - 40));
-    dyn.addChild(place(
-      txt(`events played: ${game.eventIndex}   |   survivors: ${game.aliveTribes().length}`, 14, C.faint, { anchor: true }),
-      W / 2,
-      H / 2 + 10
-    ));
-    button(dyn, W / 2 - 110, H / 2 + 50, 220, 36, "New Game", onNewGame);
+    const t = txt(msg, 36, color, { bold: true });
+    t.anchor.set(0.5);
+    dyn.addChild(place(t, W / 2, H / 2 - 40));
+    const sub = txt(
+      `events played: ${game.eventIndex}   ·   survivors: ${game.aliveTribes().length}`,
+      14,
+      C.faint
+    );
+    sub.anchor.set(0.5);
+    dyn.addChild(place(sub, W / 2, H / 2 + 10));
+    button(dyn, W / 2 - 110, H / 2 + 50, 220, 36, "New Game", onNewGame, true, { bold: true });
   }
 
   function render() {
-    // Clear any stale dice selection when the acting tribe/decision changes
-    // (e.g. reroll phase -> claiming phase).
-    const key = `${game.phase}:${game.awaiting ? game.awaiting.type + ":" + game.awaiting.tribeId : "-"}`;
+    // defensive: the staged slot may have been claimed by an AI in the
+    // meantime (staged dice are still in the pool) -> clear the staging
+    if (
+      view.staging.slot !== null &&
+      game.slots[view.staging.slot] &&
+      game.slots[view.staging.slot].claimedBy !== null
+    )
+      view.staging = newStaging();
+
+    // reset per-decision UI state when the decision kind changes
+    // (staging intentionally survives AI turns within the same claim phase)
+    const a = game.awaiting;
+    const key = `${game.eventIndex}:${game.phase}:${a ? a.type : "-"}`;
     if (key !== view.turnKey) {
       view.turnKey = key;
-      view.sel.clear();
+      view.staging = newStaging();
+      view.keepSel.clear();
+      view.growthN = 0;
     }
     destroyAll(dyn);
     renderTop();
-    renderSlots();
+    renderCard();
     renderTribes();
-    renderBottom();
+    renderContextA();
+    renderActions();
     renderLog();
     renderOverlay();
+    updateDice();
   }
 
-  // ---- AI pump: applies AI decisions with a delay until control returns
-  // ---- to the human, the game ends, or the scene is replaced.
+  // ---- pump: AI turns, reward stepping, new-event rolls ----
+
+  function takeNightSnapshot() {
+    view.nightSnap = {
+      food: game.tribes.map((t) => t.food),
+      pop: game.tribes.map((t) => t.population),
+      eliminated: new Set(game.tribes.filter((t) => t.eliminated).map((t) => t.id)),
+    };
+  }
+
+  function presentRewardStep(idx, r) {
+    const row = view.rewardList && view.rewardList[idx];
+    if (!row) return;
+    if (r.needsTarget) {
+      row.state = "target";
+      row.result = "pick a target: click a tribe";
+    } else if (r.voided) {
+      row.state = "voided";
+      row.result = "VOIDED — claimer eliminated";
+    } else if (r.fizzled) {
+      row.state = "fizzled";
+      row.result = "fizzled — no valid target";
+    } else if (r.applied) {
+      row.state = "done";
+      row.result = short(r.applied.lines[0] || "resolved", 40);
+    }
+  }
+
   function pump() {
     const myGen = ctx.gen;
     if (ctx.pump === myGen) return;
@@ -476,11 +1215,81 @@ export function buildGameScene(ctx, game, onNewGame) {
       try {
         for (;;) {
           if (ctx.gen !== myGen) return;
+
+          // new Event: roll animation for all tribes, then hand over
+          if (game.phase === "reroll" && game.eventIndex !== view.lastEvent) {
+            view.lastEvent = game.eventIndex;
+            view.staging = newStaging();
+            view.keepSel.clear();
+            view.growthN = 0;
+            view.err = "";
+            view.nightSnap = null;
+            view.rewardEvent = null;
+            view.rewardList = null;
+            render();
+            await animateInitialRoll();
+            if (ctx.gen !== myGen) return;
+            render();
+          }
+
           if (game.phase === "over") {
             render();
             return;
           }
+
           const a = game.awaiting;
+
+          // reward phase: present queued claims one at a time
+          if (game.phase === "reward") {
+            if (a && a.type === "target" && humanTurn(a)) {
+              render();
+              return; // human picks the target by clicking a tribe
+            }
+            if (view.rewardEvent !== game.eventIndex) {
+              view.rewardEvent = game.eventIndex;
+              view.rewardList = game.claims.map((c) => ({
+                tribeId: c.tribeId,
+                slotIndex: c.slotIndex,
+                state: "queued",
+                result: "",
+              }));
+            }
+            // a hostile target was just picked and the pump resumed: close
+            // out the row that was waiting for the target
+            const lastLine = [...game.log].reverse().find((l) => !l.startsWith("==="));
+            for (let i = 0; i < view.rewardList.length; i++)
+              if (view.rewardList[i].state === "target" && i < game.claimResolvePos) {
+                view.rewardList[i].state = "done";
+                view.rewardList[i].result = short(lastLine || "target applied", 40);
+              }
+            await sleep(REWARD_STEP_MS);
+            if (ctx.gen !== myGen) return;
+            const idx = game.claimResolvePos;
+            if (idx >= game.claims.length - 1) takeNightSnapshot();
+            if (view.rewardList[idx]) view.rewardList[idx].state = "resolving";
+            render();
+            const r = game.stepReward();
+            presentRewardStep(idx, r);
+            render();
+            if (r.needsTarget) {
+              if (game.awaiting && humanTurn(game.awaiting)) {
+                render();
+                return;
+              }
+              await sleep(AI_TURN_DELAY_MS);
+              if (ctx.gen !== myGen) return;
+              const at = game.awaiting;
+              if (!at) return;
+              try {
+                game.resolveWithTarget(at.tribeId, aiTargetDecision(game, at.tribeId, at.effect));
+              } catch (e) {
+                view.err = e.message;
+              }
+              render();
+            }
+            continue;
+          }
+
           if (!a) {
             render();
             return;
@@ -489,13 +1298,28 @@ export function buildGameScene(ctx, game, onNewGame) {
             render();
             return;
           }
+
+          // AI turn: delay, apply, animate the diff
           await sleep(AI_TURN_DELAY_MS);
           if (ctx.gen !== myGen) return;
-          if (!applyAiDecision(game)) {
+          const before = {
+            tribeId: a.tribeId,
+            dice: snapshotDice(),
+            claimCount: game.claims.length,
+            logLen: game.log.length,
+          };
+          try {
+            if (!applyAiDecision(game)) {
+              render();
+              return;
+            }
+          } catch (e) {
+            view.err = e.message;
             render();
             return;
           }
-          render();
+          await animateAiAction(before);
+          if (ctx.gen !== myGen) return;
         }
       } finally {
         if (ctx.pump === myGen) ctx.pump = null;
@@ -505,7 +1329,14 @@ export function buildGameScene(ctx, game, onNewGame) {
 
   scene.render = render;
   scene.pump = pump;
-  scene.debugSelection = () => [...view.sel];
-  scene.debugInfo = () => ({ sel: [...view.sel], err: view.err });
+  // debug handles (scripted verification / console poking)
+  scene.debug = {
+    staging: () => ({ slot: view.staging.slot, staged: [...view.staging.staged] }),
+    keep: () => [...view.keepSel],
+    growthN: () => view.growthN,
+    setGrowthN: (n) => {
+      view.growthN = n;
+    },
+  };
   return scene;
 }
