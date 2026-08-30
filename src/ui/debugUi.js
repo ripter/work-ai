@@ -4,12 +4,19 @@
 // scene. A generation counter cancels stale AI pumps when the scene
 // changes.
 
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Rectangle } from "pixi.js";
 import { Game } from "../game/game.js";
 import { W, H, C, txt, place, button, destroyAll } from "./uiKit.js";
 import { buildGameScene } from "./gameScene.js";
 
 export function startApp(app) {
+  // Pixi v8 only dispatches pointer events when the pointer is over a
+  // static/dynamic object. The scene's background is passive, so without a
+  // full-screen hit target on the stage, pointermove/pointerup would stop
+  // the moment the pointer leaves a die (breaking drag-and-drop).
+  app.stage.eventMode = "static";
+  app.stage.hitArea = new Rectangle(0, 0, W, H);
+
   const ctx = { gen: 0, pump: null };
   // Debug aid: "?autoplay=N" (N = 1..3) starts a game immediately.
   // Useful for screenshots and watching an AI-vs-AI game.

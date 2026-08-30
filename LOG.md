@@ -131,8 +131,13 @@ Let's make a couple of changes to the core loop so we can try and improve the ga
 
 This is a lot more fun to play than the previous version. I don't feel like I'm struggling just to get enough food. I even increased my population once and the AI did it twice. There still seems to be some issues with showing what is avialable after the first pick, but that might just be a human error.
 
-Saved as Session 9.json
+Saved as Session9.json
 
 ## Step 8 - UX Improvents
 Let's improve the UX now that we have a core loop that is enjoyable to play.
+
+Big improvements to the UX. This is easier to understand and fun to play. Dice rolling is animated and drag and drop works. The changes to the UX makes it easier to understand what is happening and what I should do next.
+
+Saved as session10.json
+
 

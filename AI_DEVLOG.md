@@ -445,6 +445,10 @@ node /tmp/cdp-smoke.mjs             # headless-Chrome CDP against the dev
                                     # events for KEEP tap + drag/drop, live
                                     # validation, swap, claim, advance to
                                     # event 2 — PASS, zero page errors
+node /tmp/cdp-mouse.mjs             # real-mouse CDP drag (Input.dispatch
+                                    # MouseEvent, real hit-testing): PASS
+                                    # with the stage hit-area fix, fails
+                                    # (die stuck in "drag") without it
 node /tmp/cdp-autoplay.mjs          # full AI game through the scene
                                     # (seat 0 flipped to AI via CDP): 4
                                     # events, starvation elimination,
@@ -463,6 +467,18 @@ the repo.)
   does not exist in v8, so every real drag would have thrown. Rewrote the
   drag to listen for pointermove/pointerup on a stage-level `dragTarget`.
   Caught by the headless smoke test (simulated pointerdown).
+- Real-mouse drag still failed (user report): the smoke test's manual
+  `emit()` bypassed Pixi's hit-testing, hiding that v8 only dispatches
+  pointer events when the pointer is over a static/dynamic object. The
+  scene's background/panels are passive, so once the pointer left a 30px
+  die, `hitTest` returned null, `EventBoundary.propagate()` bailed, and the
+  stage-level pointermove/pointerup never fired — the die froze mid-drag
+  and got stuck in the drag state. Fixed in `debugUi.startApp` by making
+  the stage a full-screen hit target (`eventMode: "static"` +
+  `hitArea: new Rectangle(0, 0, W, H)`) — the documented v8 drag pattern.
+  Verified with CDP `Input.dispatchMouseEvent` (real input pipeline):
+  press/drag/release stages the die into the slot; the same test with the
+  fix disabled reproduces the freeze (die stuck in "drag", empty staging).
 - The reward pump's target-wait branches checked `tribeId === 0` instead of
   `humanTurn()` — a latent deadlock for any non-human seat 0 (e.g. the
   autoplay verification). Fixed to use `humanTurn()`.
