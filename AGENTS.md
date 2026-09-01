@@ -35,11 +35,22 @@ to PixiJS/Vite/HTML5. PICO-8 history lives in git and in `REPORT.md`
 - `package.json` — scripts: `dev`, `build`, `preview`.
 - `src/main.js` — creates the Pixi Application, builds the current scene.
 - `src/style.css` — page layout around the canvas.
-- `src/game/` — game scenes and logic (e.g. `scene.js`).
-- `src/ui/` — UI widgets (drag-and-drop dice, panels, etc. — future).
-- `src/data/` — static game data (event cards, tribes, etc. — future).
-- `assets/` — imported art assets (referenced from JS, processed by Vite).
+- `src/game/` — game model, state machine, rules (e.g. `game.js`, `rules.js`).
+- `src/ui/` — Pixi scenes and widgets (gameScene, dieView, uiKit, artwork…).
+- `src/data/` — static game data (event cards, tribes, etc.).
+- `assets/generated/` — raw ComfyUI outputs + `.meta.json` provenance
+  sidecars. Development-time; kept for reproducibility, NOT imported by the
+  game.
+- `assets/final/` — finished art that the game actually imports (referenced
+  from JS, processed by Vite). Only assets in here ship.
+- `comfyui/` — local art pipeline (development-time only): `generate.py`
+  (workflow JSON -> `assets/generated`), `analyze.py` (candidate metrics),
+  `workflows/` (ComfyUI API-format workflows), `prompts/` (shared style
+  blocks + per-asset generation records). See `comfyui/README.md`. The game
+  build has no runtime dependency on ComfyUI.
 - `public/` — static files copied verbatim into `dist/`.
+- `VISUAL_DIRECTION.md` — the visual identity (palette, type, shape
+  language, generated-art ground rules). Follow it for new art/UI.
 - `GAME_SPEC.md` — canonical game spec. Follow it; when code and spec
   disagree, fix the code.
 - `AI_DEVLOG.md` — AI-maintained dev log. Append a concise entry per

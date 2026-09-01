@@ -8,18 +8,23 @@ import { Container, Graphics, Text } from "pixi.js";
 export const W = 1280;
 export const H = 800;
 
+// CavePerson palette (Prompt 4 visual direction): warm charcoal/hide browns,
+// bone-white text, ochre accent, moss/blood feedback colors.
 export const C = {
-  bg: 0x1d2b53,
-  panel: 0x241b3f,
-  panelAlt: 0x2b2444,
-  border: 0x83769c,
-  dim: 0x6a5f8a,
-  text: 0xfff1e8,
-  faint: 0xc2c3c7,
-  green: 0x00e436,
-  red: 0xe6553c,
-  yellow: 0xf5d547,
-  blue: 0x4d9de0,
+  bg: 0x171210,
+  panel: 0x251c12,
+  panelAlt: 0x2e2318,
+  border: 0x8a7455,
+  dim: 0x6e5f49,
+  text: 0xf2e8d5,
+  faint: 0xbfae94,
+  green: 0x8fc74f,
+  red: 0xd94f30,
+  yellow: 0xe8a33d,
+  blue: 0x7fa8c9,
+  // stone/hide frame edges for panels
+  frameDark: 0x3d3122,
+  frameLight: 0x5a4a33,
 };
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -30,8 +35,9 @@ export function txt(str, size = 13, color = C.text, opts = {}) {
     style: {
       fill: color,
       fontSize: size,
-      fontFamily: "monospace",
-      fontWeight: opts.bold ? "bold" : "normal",
+      fontFamily: opts.display ? "'Trebuchet MS', 'Avenir Next', sans-serif" : "monospace",
+      fontWeight: opts.bold || opts.display ? "bold" : "normal",
+      letterSpacing: opts.display ? Math.max(1, Math.round(size * 0.08)) : 0,
       wordWrap: Boolean(opts.wrap),
       wordWrapWidth: opts.wrap ? opts.wrap : 0,
       lineHeight: Math.round(size * 1.3),
@@ -47,11 +53,15 @@ export function place(t, x, y) {
   return t;
 }
 
+// Stone/hide framing: dark outer edge + lighter worn inner line.
 export function panel(x, y, w, h, fill = C.panel) {
   return new Graphics()
     .roundRect(x, y, w, h, 8)
     .fill(fill)
-    .stroke({ width: 1, color: C.border });
+    .roundRect(x, y, w, h, 8)
+    .stroke({ width: 2, color: C.frameDark })
+    .roundRect(x + 2.5, y + 2.5, w - 5, h - 5, 6)
+    .stroke({ width: 1, color: C.frameLight });
 }
 
 export function button(
@@ -70,7 +80,7 @@ export function button(
   g.addChild(
     new Graphics()
       .roundRect(0, 0, w, h, 6)
-      .fill(enabled ? 0x3a2d6b : 0x2b2444)
+      .fill(enabled ? 0x453423 : C.panelAlt)
       .stroke({
         width: enabled ? 1 : 1,
         color: enabled ? (accent ?? C.border) : C.dim,

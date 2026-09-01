@@ -140,4 +140,13 @@ Big improvements to the UX. This is easier to understand and fun to play. Dice r
 
 Saved as session10.json
 
+## Step 9 - ComfyUI asset pipeline
+We need to establish the visual direction and ComfyUI asset pipeline. The goal is to get the LLM to use ComfyUI to generate the images we will use in the game.
+To do that we need to make sure we can generate and check the art generated.
+
+First round, it was intresting that it was able to generate images and put together a sample image and asked me to pick the best from the samples. That worked pretty well and surprised me. However the icons are absolute garbage and unusable. 
+Second round, card header looks much better. The icons are better but still suck. The food and the person look to similar to each other. The choice of a drumstick is a bad choice. The tool looks like nothing.
+
+
+
 

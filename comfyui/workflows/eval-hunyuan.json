@@ -1,0 +1,99 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "hunyuan_dit_1.2.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "models_t5_umt5-xxl-enc-bf16.pth",
+      "type": "hunyuan_image"
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "bold graphic illustration, prehistoric graphic novel style, heavy confident black ink outlines, flat matte painted colors, simplified bold shapes, strong silhouettes, dramatic dynamic composition, earthy prehistoric color palette of ochre amber burnt sienna bone white and moss green, strong dramatic side lighting, raw energetic feel, textured natural environment, minimal clutter, woolly mammoth with huge curved tusks charging across a dry savanna, two tiny prehistoric hunters with spears and clubs running after it for scale, kicked-up dust, dynamic motion, wide horizontal banner composition, mammoth large in center-left, open negative space in the sky on the right"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "photorealistic, photograph, 3d render, cgi, glossy, anime, manga, cartoon, cute, text, words, letters, watermark, signature, user interface, buttons, frame, border, busy, cluttered, excessive detail, noise, blurry, low quality, deformed, malformed, extra limbs, bad anatomy"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1024,
+      "height": 512,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 424242,
+      "steps": 30,
+      "cfg": 5.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "3",
+        0
+      ],
+      "negative": [
+        "4",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ],
+      "denoise": 1.0
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "7",
+        0
+      ],
+      "filename_prefix": "caveperson/eval"
+    }
+  },
+  "9": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "hunyuan_video_vae_bf16.safetensors"
+    }
+  }
+}

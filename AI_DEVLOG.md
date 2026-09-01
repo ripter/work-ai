@@ -499,3 +499,159 @@ the repo.)
   rather than changing the debug aid's contract.
 - Nothing was committed; the working tree contains the Prompt 3 UI, ready
   for the maintainer to review, playtest, and commit.
+
+## 2026-08-31 — Prompt 4: visual direction, ComfyUI proof of style (Mammoth Hunt banner + Food/Tools/Population treatments), integrated into the playable game
+
+**What happened.** Established a prehistoric-graphic-novel visual identity
+and proved it end-to-end with the local ComfyUI instance
+(127.0.0.1:8188): built a small dev-only generation pipeline
+(`comfyui/generate.py`, `comfyui/analyze.py`), evaluated 4 checkpoints,
+generated 14 Mammoth Hunt banner candidates across 2 prompt revisions and
+3 subject variants, had the maintainer pick (seed 404, savanna), cropped
+it to a 1024x208 banner, and integrated it into the real game behind a
+data-driven `art` field on the event card. Also restyled the UI to match:
+earthy palette, stone/hide panel framing, display type, bone/stone dice,
+and vector Food/Tools/Population icons (8 generated icon attempts were
+tried and rejected — vectors are strictly clearer at 12-14px). No
+gameplay, rule, or balance changes; presentation only.
+
+**Changes made.**
+- `comfyui/` (new, dev-only) — `generate.py` (stdlib-only ComfyUI API
+  runner: POST /prompt, poll /history, download /view, write `.meta.json`
+  provenance sidecars), `analyze.py` (candidate metrics + contact sheets;
+  run with the ComfyUI venv python which has PIL), `workflows/` (API-format
+  workflows: `mammoth-hunt.json` = workflow of record for the shipped
+  banner; `mammoth-hunt-v2.json`; `icon-*.json`; `eval-*.json`),
+  `prompts/STYLE.md` (shared positive/negative style blocks + v1->v2
+  revision rationale), `prompts/mammoth-hunt.md` (full 14-gen iteration
+  record with per-seed verdicts + selection), `prompts/icons.md` (8
+  rejected icon gens + vector decision), `README.md`.
+- `assets/generated/caveperson/` (new) — every generated PNG with a
+  `.meta.json` sidecar (workflow, seed, model, sampler, steps, cfg).
+  Committed per maintainer decision so shipped art stays reproducible.
+- `assets/final/mammoth-hunt-banner.png` (new) — the shipped banner
+  (1024x208), source `assets/generated/caveperson/mammoth-hunt_00004_.png`
+  (1024x512, seed 404, SD 1.5, dpmpp_2m/karras, 25 steps, cfg 6.0).
+- `src/data/events.js` — card shape doc gains optional `art?` (id into the
+  artwork registry); only mammoth-hunt carries `art: "mammoth-hunt"`.
+- `src/ui/artwork.js` (new) — banner registry (art id -> Vite-imported
+  asset), Image predecode + `Texture.from(img)` at module import,
+  `bannerTexture`/`bannerSize`, `resourceIcon(kind,size)` vector icons
+  (drumstick / hand axe / figure+club in bone 0xe6d9bd + outline 0x46361f),
+  `scrimTexture()` (canvas gradient), `rewardKind()`, `artworkDebug()`,
+  `ART_BANNER_H = 96`.
+- `src/ui/gameScene.js` — `renderCard()` draws a 96px art band (masked
+  Sprite + scrim + display-type title) when the card's banner is ready,
+  plain header otherwise; 12px reward-row icon; 14px tribe-row resource
+  icons; `view.lastArtBand` + `scene.debug.art` render/verification handle.
+- `src/ui/uiKit.js` — new earthy `C` palette (bg 0x171210, panel 0x251c12,
+  bone text 0xf2e8d5, ochre 0xe8a33d, moss 0x8fc74f, blood 0xd94f30, ...),
+  display type style (bold, letter-spaced), `panel()` stone/hide double
+  frame, button fill 0x453423.
+- `src/ui/dieView.js` — bone/stone `STATE_STYLE` (bone face, dark pips,
+  stroke 2-3, radius 0.2); pips/layout/drag behavior untouched.
+- `src/main.js` (bg 0x171210), `src/style.css` (page bg #0e0b09).
+- `tests/assets.test.js` (new) — 4 tests: mammoth-hunt card has an art id;
+  `assets/final/<art>-banner.png` exists with sane PNG dimensions;
+  non-art cards are unaffected; artwork.js registry keys match card art ids
+  (drift guard).
+- `VISUAL_DIRECTION.md` (new) — the direction: palette table, type, shape
+  language, generated-art ground rules, what's shipped, what's deferred.
+- `AGENTS.md` — project layout section updated with `comfyui/`,
+  `assets/generated` vs `assets/final`, and the new docs (maintainer
+  approved).
+
+**Verification.**
+```sh
+npm test                            # 87/87 baseline -> 91/91 after
+make build                          # clean; banner ships hashed, refs ./assets
+make preview + node /tmp/cdp-verify-p4.mjs
+  # PASS A (natural): full AI-vs-AI game, no tampering -> phase "over",
+  #   mammoth-hunt happened to land at event 3: art loaded + rendered,
+  #   zero page errors
+  # PASS B (forced): mammoth forced into events 1-3 (deck is shuffled,
+  #   so this guarantees coverage) -> art loaded + rendered, zero errors
+shasum LOG.md stats/*.json          # byte-identical to pre-session baseline
+```
+(The CDP script is a throwaway in /tmp, not part of the repo.)
+
+**Failures / fixes.**
+- **Pixi v8: `Texture.from(urlString)` does not load a URL** — it looks up
+  the Assets cache by label and returns `undefined` (verified in
+  `node_modules/pixi.js/lib/rendering/renderers/shared/texture/utils/
+  textureFrom.js`). The banner silently never appeared. Fixed by preloading
+  with plain `new Image()` at module import and calling
+  `Texture.from(img)` on decode.
+- **Pixi v8: `Texture.valid` does not exist** (v7 API), and a texture's
+  `width`/`height` stay 0 until first GPU upload — so the "is the banner
+  ready?" check and the fit-to-band scale math must use our own predecode
+  state + captured natural image size (`bannerSize`), not the texture.
+  Both fixed in `artwork.js`/`gameScene.js`; the CDP `rendered` assertion
+  confirms the art band is actually drawn, not just loaded.
+- All 8 generated resource icons rejected by the maintainer ("not a single
+  usable thing"): SD 1.5 paints them as small soft scenes and rembg fights
+  the soft edges at 12-14px. Switched to Pixi vector icons (explicitly
+  allowed by the brief); the generation record is kept in
+  `comfyui/prompts/icons.md`.
+- `hunyuan_dit_1.2` checkpoint is unusable in this ComfyUI (0.34.0) setup
+  (diffusers-format weights) — documented in the eval table, skipped per
+  the no-new-models rule.
+
+**Assumptions / decisions (maintainer-confirmed where noted).**
+- Committed raw sources to `assets/generated/` and updated the AGENTS.md
+  layout section — both confirmed by the maintainer.
+- Shipped banner = seed 404 (v1 prompt, variant A), the maintainer's pick
+  from the candidate sheet; v2 prompt block is the current style for
+  *future* assets even though the shipped art came from v1.
+- No ComfyUI runtime dependency: the banner is a committed PNG imported
+  through Vite; `comfyui/` is only ever run on a dev machine.
+- Only Mammoth Hunt got art this round (per the brief's stop condition);
+  the other cards keep the plain header until the direction is confirmed.
+- Direction is NOT declared a success — the maintainer decides by playing.
+
+## 2026-08-31 — Prompt 4 follow-up: fix Mammoth banner clipping + redo resource icons
+
+**What happened.** Maintainer playtest caught two real rendering bugs the
+automated checks had missed: (1) the Mammoth Hunt banner only showed its top
+half — the bottom half looked "covered/cut off"; (2) the Food/Tools/Population
+icons were "absolute garbage" and didn't read as icons. Both fixed and
+verified by reading the actual rendered pixels via CDP (the model can't view
+images, so pixel brightness maps were used).
+
+**Changes made.**
+- `src/ui/gameScene.js` (banner mask fix) — the art band's clip mask
+  (`holder.mask = new Graphics().rect(0,0,CARD_W,ART_BANNER_H)`) was cutting
+  the banner in half. Root cause: a mask `Graphics` is NOT in the display
+  list, so its own position/transform is never applied — only its local
+  geometry is, in the parent (`dyn`) space. A rect at `(0,0)` therefore
+  clipped to the top-left of the canvas, intersecting the banner only at
+  `y 48..96` (top half). Fixed by offsetting the rect to the holder's
+  position: `.rect(CARD_X, CARD_Y, CARD_W, ART_BANNER_H)`. Verified: the
+  banner now fills the full 96px band top-to-bottom (all 12 pixel rows have
+  content), and non-art cards are unaffected.
+- `src/ui/artwork.js` (icon redo) — the old icons used thin ~1.5px outlines
+  plus small multi-part shapes in dark fills, which dissolved into mud at
+  12-14px. Redid all three as ONE bold solid-color silhouette each (no thin
+  outline, high contrast vs the dark panels, shape fills the box):
+  Food = drumstick (meat ball + bone + two knobs, warm orange 0xe0863f),
+  Tools = stone axe (blade + handle, light gray 0xb3aa9d), Population =
+  person (head + body, bone 0xe6d9bd). Verified at 60px (shapes read clearly)
+  and in-context at 12-14px.
+
+**Verification.**
+```sh
+npm test              # 91/91
+make build            # clean
+# CDP pixel-brightness maps (headless Chrome, forced mammoth card):
+#   - mammoth banner band (470x96): all 12 rows populated (was top 6 only)
+#   - rock-quarry (no art): plain header, slots intact
+#   - resource icons rendered at 60px: drumstick / axe / person all legible
+```
+
+**Notes.**
+- The banner bug was invisible to the earlier "art loaded + rendered" CDP
+  check because that only asserted the texture was ready and the band was
+  drawn — not that the full image was visible. Lesson: for art, verify the
+  actual pixels, not just the scene graph.
+- `LOG.md` "Step 9" (maintainer) independently flags the same icon problem;
+  left `LOG.md` untouched.

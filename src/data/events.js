@@ -2,7 +2,10 @@
 // only — no behavior.
 //
 // Card shape:
-//   { id, name, orderRule, slots: [ { id, name, diceRequired, requirement, reward } ] }
+//   { id, name, orderRule, art?, slots: [ { id, name, diceRequired, requirement, reward } ] }
+//
+// art: optional id of a generated banner illustration (see src/ui/artwork.js).
+//      Presentation only — cards without it keep the plain layout.
 //
 // diceRequired: EXACT number of dice the player must submit for this slot.
 //               Required on every slot — never inferred from the
@@ -34,6 +37,7 @@ export const PROTOTYPE_EVENTS = [
     id: "mammoth-hunt",
     name: "Mammoth Hunt",
     orderRule: "highestTotal",
+    art: "mammoth-hunt",
     slots: [
       { id: "mh-1", name: "Snaggletooth", diceRequired: 1, requirement: [{ type: "sumAtMost", value: 4 }], reward: { food: 2 } },
       { id: "mh-2", name: "Herd Tail", diceRequired: 2, requirement: [{ type: "allEven" }], reward: { food: 3 } },

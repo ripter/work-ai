@@ -1,0 +1,61 @@
+{
+  "nodes": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "text": "bold graphic illustration, prehistoric graphic novel style, heavy confident black ink outlines, flat matte painted colors, simplified bold shapes, strong silhouettes, earthy prehistoric color palette of ochre amber burnt sienna bone white and moss green, single piece of raw meat with a big bone, hanging, bold graphic icon, centered, simple flat design, single centered icon, thick black outline, plain solid light beige background, no other objects, icon design, high contrast, high detail silhouette"
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "text": "photorealistic, photograph, 3d render, cgi, glossy, shiny, anime, manga, cartoon, cute, chibi, clip art, sticker, text, words, letters, numbers, typography, watermark, signature, logo, user interface, ui, buttons, menu, frame, border, multiple objects, multiple frames, complex background, scene, landscape, busy, cluttered, excessive detail, noise, grainy, blurry, low quality, deformed, malformed, extra limbs, bad anatomy"
+    },
+    "4": {
+      "class_type": "EmptyLatentImage",
+      "width": 512,
+      "height": 512
+    },
+    "5": {
+      "class_type": "KSampler",
+      "seed": 901,
+      "steps": 25,
+      "cfg": 6.5,
+      "sampler": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0
+    },
+    "7": {
+      "class_type": "Image Remove Background (rembg)",
+      "model_name": "u2net"
+    },
+    "8": {
+      "class_type": "SaveImage",
+      "filename_prefix": "caveperson/icon-food"
+    },
+    "9": {
+      "class_type": "ImageScale",
+      "inputs": {
+        "image": [
+          "7",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "width": 128,
+        "height": 128,
+        "crop": "disabled"
+      }
+    },
+    "10": {
+      "class_type": "SaveImage",
+      "filename_prefix": "caveperson/icon-food-128"
+    }
+  },
+  "workflow_file": "comfyui/workflows/icon-food.json",
+  "generated_at": "2026-08-31T19:09:49+00:00",
+  "seed": 901,
+  "prompt_id": "078f1c90-3331-441e-8e40-6a7d3a0ae9e7",
+  "output_node": "10",
+  "comfyui_filename": "icon-food-128_00001_.png"
+}

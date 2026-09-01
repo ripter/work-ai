@@ -1,0 +1,119 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "1",
+        1
+      ],
+      "text": "bold graphic illustration, prehistoric graphic novel style, heavy confident black ink outlines, flat matte painted colors, simplified bold shapes, strong silhouettes, earthy prehistoric color palette of ochre amber burnt sienna bone white and moss green, single stone hand axe flint axe, bold graphic icon, centered, simple flat design, single centered icon, thick black outline, plain solid light beige background, no other objects, icon design, high contrast, high detail silhouette"
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "1",
+        1
+      ],
+      "text": "photorealistic, photograph, 3d render, cgi, glossy, shiny, anime, manga, cartoon, cute, chibi, clip art, sticker, text, words, letters, numbers, typography, watermark, signature, logo, user interface, ui, buttons, menu, frame, border, multiple objects, multiple frames, complex background, scene, landscape, busy, cluttered, excessive detail, noise, grainy, blurry, low quality, deformed, malformed, extra limbs, bad anatomy"
+    }
+  },
+  "4": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1
+    }
+  },
+  "5": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 0,
+      "steps": 25,
+      "cfg": 6.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "2",
+        0
+      ],
+      "negative": [
+        "3",
+        0
+      ],
+      "latent_image": [
+        "4",
+        0
+      ],
+      "denoise": 1.0
+    }
+  },
+  "6": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "5",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    }
+  },
+  "7": {
+    "class_type": "Image Remove Background (rembg)",
+    "inputs": {
+      "image": [
+        "6",
+        0
+      ],
+      "model_name": "u2net"
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "7",
+        0
+      ],
+      "filename_prefix": "caveperson/icon-tools"
+    }
+  },
+  "9": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "7",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 128,
+      "height": 128,
+      "crop": "disabled"
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "9",
+        0
+      ],
+      "filename_prefix": "caveperson/icon-tools-128"
+    }
+  }
+}

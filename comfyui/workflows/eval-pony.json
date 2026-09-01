@@ -1,0 +1,47 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": { "ckpt_name": "ponyDiffusionV6XL_v6StartWithThisOne.safetensors" }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["1", 1],
+      "text": "score_9, score_8_up, score_7_up, rating_safe, source_2d, medium_2d, style_2d, bold graphic illustration, prehistoric graphic novel style, heavy confident black ink outlines, flat matte painted colors, simplified bold shapes, strong silhouettes, dramatic dynamic composition, earthy prehistoric color palette of ochre amber burnt sienna bone white and moss green, strong dramatic side lighting, raw energetic feel, woolly mammoth with huge curved tusks charging across a dry savanna, two tiny prehistoric hunters with spears running after it for scale, dynamic motion, wide horizontal banner composition, mammoth large in center-left, open negative space in the sky on the right"
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["1", 1],
+      "text": "score_6, score_5, score_4, worst quality, low quality, blurry, 3d render, photorealistic, anime, cartoon, cute, text, words, watermark, signature, deformed, malformed, extra limbs, extra arms, extra legs, extra fingers, bad anatomy, busy, cluttered, ui, buttons, frame, border"
+    }
+  },
+  "4": {
+    "class_type": "EmptyLatentImage",
+    "inputs": { "width": 1024, "height": 512, "batch_size": 1 }
+  },
+  "5": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 424242,
+      "steps": 28,
+      "cfg": 6.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "model": ["1", 0],
+      "positive": ["2", 0],
+      "negative": ["3", 0],
+      "latent_image": ["4", 0],
+      "denoise": 1.0
+    }
+  },
+  "6": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["5", 0], "vae": ["1", 2] }
+  },
+  "7": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["6", 0], "filename_prefix": "caveperson/eval" }
+  }
+}

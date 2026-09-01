@@ -21,7 +21,7 @@
 // The Game model (src/game/game.js) is the sole authority on legality;
 // this scene renders state, collects player intent, and animates changes.
 
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import { applyAiDecision, aiTargetDecision } from "../game/ai.js";
 import { describeSlot, describeReward, ORDER_RULES, validHostileTargets } from "../game/rules.js";
 import { AI_TURN_DELAY_MS, GROWTH_FOOD_COST } from "../game/config.js";
@@ -37,6 +37,15 @@ import {
   isHumanClaimTurn,
 } from "./claimStaging.js";
 import { makeDie, tumble } from "./dieView.js";
+import {
+  bannerTexture,
+  bannerSize,
+  resourceIcon,
+  scrimTexture,
+  rewardKind,
+  ART_BANNER_H,
+  artworkDebug,
+} from "./artwork.js";
 import { W, H, C, sleep, txt, place, panel, button, hitRect, destroyAll } from "./uiKit.js";
 
 // ---- layout (1280x800, desktop-first) ----
@@ -560,29 +569,77 @@ export function buildGameScene(app, ctx, game, onNewGame) {
 
   function renderCard() {
     dyn.addChild(panel(CARD_X, CARD_Y, CARD_W, CARD_H));
-    dyn.addChild(
-      place(
-        txt(`EVENT CARD — ${game.card.name}`, 14, C.text, { bold: true }),
-        CARD_X + 10,
-        CARD_Y + 8
-      )
-    );
-    dyn.addChild(
-      place(
-        txt(`claim order rule: ${ORDER_RULES[game.card.orderRule].label}`, 11, C.faint),
-        CARD_X + 10,
-        CARD_Y + 27
-      )
-    );
+
+    // Banner art (data-driven: card def's `art` id -> assets/final). Cards
+    // without art keep the plain header layout.
+    const artTex = game.card.art ? bannerTexture(game.card.art) : null;
+    const artSz = game.card.art ? bannerSize(game.card.art) : null;
+    const hasArt = Boolean(artTex && artSz);
+    view.lastArtBand = hasArt; // debug/verification: was the art band drawn?
+    const topPad = hasArt ? ART_BANNER_H + 8 : 44;
+
+    if (hasArt) {
+      const holder = new Container();
+      holder.position.set(CARD_X, CARD_Y);
+      const spr = new Sprite(artTex);
+      // Use the pre-decoded natural size, not artTex.width/height (0 until
+      // first GPU upload in Pixi v8).
+      const scale = Math.max(CARD_W / artSz.w, ART_BANNER_H / artSz.h);
+      spr.scale.set(scale);
+      spr.anchor.set(0.5);
+      spr.position.set(CARD_W / 2, ART_BANNER_H / 2);
+      holder.addChild(spr);
+      // The mask Graphics is not in the display list, so its own position/
+      // transform is NOT applied — only its local geometry is, in the parent
+      // (dyn) space. Offset the rect to the holder's position so the clip
+      // region lines up with the banner (a rect at (0,0) cut it in half).
+      holder.mask = new Graphics()
+        .rect(CARD_X, CARD_Y, CARD_W, ART_BANNER_H)
+        .fill(0xffffff);
+      dyn.addChild(holder);
+      const scrim = new Sprite(scrimTexture());
+      scrim.scale.set(CARD_W / 256, ART_BANNER_H / 16);
+      scrim.position.set(CARD_X, CARD_Y);
+      dyn.addChild(scrim);
+      dyn.addChild(
+        place(
+          txt(`EVENT CARD — ${game.card.name}`, 15, C.text, { display: true }),
+          CARD_X + 12,
+          CARD_Y + 12
+        )
+      );
+      dyn.addChild(
+        place(
+          txt(`claim order: ${ORDER_RULES[game.card.orderRule].label}`, 11, C.faint),
+          CARD_X + 12,
+          CARD_Y + 44
+        )
+      );
+    } else {
+      dyn.addChild(
+        place(
+          txt(`EVENT CARD — ${game.card.name}`, 14, C.text, { bold: true }),
+          CARD_X + 10,
+          CARD_Y + 8
+        )
+      );
+      dyn.addChild(
+        place(
+          txt(`claim order rule: ${ORDER_RULES[game.card.orderRule].label}`, 11, C.faint),
+          CARD_X + 10,
+          CARD_Y + 27
+        )
+      );
+    }
 
     const n = game.slots.length;
-    const slotH = Math.min(98, Math.floor((CARD_H - 44 - 8) / n));
+    const slotH = Math.min(98, Math.floor((CARD_H - topPad - 8) / n));
     const st = view.staging;
     const humanClaim = isHumanClaimTurn(game);
     view.slotRects = new Array(n);
 
     game.slots.forEach((slot, i) => {
-      const sy = CARD_Y + 44 + i * (slotH + 1);
+      const sy = CARD_Y + topPad + i * (slotH + 1);
       const state = slotDisplayState(game, st, i);
       view.slotRects[i] = { x: SLOT_X, y: sy, w: SLOT_W, h: slotH };
       const ss = state === "staging" ? stagedState(st, game, i) : null;
@@ -629,10 +686,17 @@ export function buildGameScene(app, ctx, game, onNewGame) {
         )
       );
       dyn.addChild(place(txt(describeSlot(slot.def), 11, imp ? DIM_GRAY : C.faint), SLOT_X + 10, sy + 22));
+      const rk = rewardKind(slot.def.reward);
+      const rewardX = rk ? SLOT_X + 26 : SLOT_X + 10;
+      if (rk) {
+        const ic = resourceIcon(rk, 12);
+        ic.position.set(SLOT_X + 10, sy + 33);
+        dyn.addChild(ic);
+      }
       dyn.addChild(
         place(
           txt(`Reward: ${describeReward(slot.def.reward)}`, 11, imp ? DIM_GRAY : C.green),
-          SLOT_X + 10,
+          rewardX,
           sy + 38
         )
       );
@@ -743,7 +807,7 @@ export function buildGameScene(app, ctx, game, onNewGame) {
 
   function renderTribes() {
     dyn.addChild(panel(RIGHT_X, TRIBE_Y, RIGHT_W, TRIBE_H));
-    dyn.addChild(place(txt("TRIBES", 13, C.text, { bold: true }), RIGHT_X + 10, TRIBE_Y + 8));
+    dyn.addChild(place(txt("TRIBES", 13, C.text, { display: true }), RIGHT_X + 10, TRIBE_Y + 8));
 
     const a = game.awaiting;
     const targeting = a && a.type === "target" && humanTurn(a);
@@ -805,14 +869,24 @@ export function buildGameScene(app, ctx, game, onNewGame) {
         );
 
       const rr =
-        game.phase === "reroll" && !t.eliminated ? `  ·  ${t.freeRerolls} free rerolls` : "";
-      dyn.addChild(
-        place(
-          txt(`Pop ${t.population}  ·  Food ${t.food}  ·  Tools ${t.tools}${rr}`, 13, t.eliminated ? C.dim : C.faint),
-          RIGHT_X + 14,
-          ty + 28
-        )
-      );
+        game.phase === "reroll" && !t.eliminated ? ` · ${t.freeRerolls} free rerolls` : "";
+      const rowColor = t.eliminated ? C.dim : C.faint;
+      let rx = RIGHT_X + 14;
+      const ry = ty + 28;
+      for (const [kind, label] of [
+        ["population", `Pop ${t.population}`],
+        ["food", `Food ${t.food}`],
+        ["tools", `Tools ${t.tools}`],
+      ]) {
+        const ic = resourceIcon(kind, 14);
+        ic.position.set(rx, ry - 1);
+        dyn.addChild(ic);
+        rx += 18;
+        const lab = txt(label, 13, rowColor);
+        dyn.addChild(place(lab, rx, ry));
+        rx += lab.width + 22;
+      }
+      if (rr) dyn.addChild(place(txt(rr, 13, rowColor), rx - 12, ry)); // 10px after last label
       if (t.id === 0) {
         dyn.addChild(
           place(txt("dice: in YOUR DICE tray below", 11, C.dim), RIGHT_X + 14, ty + 54)
@@ -838,7 +912,7 @@ export function buildGameScene(app, ctx, game, onNewGame) {
     // reroll / claiming: the human's dice tray (dice live in diceLayer)
     const n = poolDice(view.staging, game).length;
     dyn.addChild(panel(RIGHT_X, CTX_Y, RIGHT_W, CTX_H));
-    dyn.addChild(place(txt(`YOUR DICE (${n})`, 12, C.text, { bold: true }), TRAY_X, CTX_Y + 6));
+    dyn.addChild(place(txt(`YOUR DICE (${n})`, 12, C.text, { display: true }), TRAY_X, CTX_Y + 6));
     const hint = rerollTurn()
       ? "click a die to mark KEEP — unkept dice are rerolled"
       : isHumanClaimTurn(game)
@@ -852,7 +926,7 @@ export function buildGameScene(app, ctx, game, onNewGame) {
     const h = CTX_H + ACT_H + 6;
     dyn.addChild(panel(RIGHT_X, CTX_Y, RIGHT_W, h));
     dyn.addChild(
-      place(txt("REWARDS — resolve in claim order", 13, C.text, { bold: true }), RIGHT_X + 12, CTX_Y + 8)
+      place(txt("REWARDS — resolve in claim order", 13, C.text, { display: true }), RIGHT_X + 12, CTX_Y + 8)
     );
     dyn.addChild(
       place(rtxt("claiming is over; rewards were queued and resolve one at a time", 10, C.faint),
@@ -933,7 +1007,7 @@ export function buildGameScene(app, ctx, game, onNewGame) {
   function renderNight() {
     dyn.addChild(panel(RIGHT_X, CTX_Y, RIGHT_W, CTX_H));
     dyn.addChild(
-      place(txt("NIGHT — feed in seat order, then grow", 13, C.text, { bold: true }), RIGHT_X + 12, CTX_Y + 8)
+      place(txt("NIGHT — feed in seat order, then grow", 13, C.text, { display: true }), RIGHT_X + 12, CTX_Y + 8)
     );
     const a = game.awaiting;
     const growingId = a && a.type === "growth" ? a.tribeId : null;
@@ -1120,7 +1194,7 @@ export function buildGameScene(app, ctx, game, onNewGame) {
 
   function renderLog() {
     dyn.addChild(panel(RIGHT_X, LOG_Y, RIGHT_W, LOG_H));
-    dyn.addChild(place(txt("LOG (latest last)", 12, C.text, { bold: true }), RIGHT_X + 10, LOG_Y + 6));
+    dyn.addChild(place(txt("LOG (latest last)", 12, C.text, { display: true }), RIGHT_X + 10, LOG_Y + 6));
     const lines = game.log.slice(-8);
     lines.forEach((line, i) => {
       const bad = /ELIMINATED|STARVED|VOIDED|FAILED|fizzles/.test(line);
@@ -1337,6 +1411,7 @@ export function buildGameScene(app, ctx, game, onNewGame) {
     setGrowthN: (n) => {
       view.growthN = n;
     },
+    art: () => ({ card: game.card.art, rendered: view.lastArtBand, ...artworkDebug() }),
   };
   return scene;
 }

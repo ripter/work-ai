@@ -8,7 +8,7 @@ const app = new Application();
 await app.init({
   width: W,
   height: H,
-  background: 0x1d2b53,
+  background: 0x171210,
   antialias: true,
 });
 

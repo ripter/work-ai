@@ -22,16 +22,18 @@ const PIPS = {
   6: [[0.28, 0.22], [0.72, 0.22], [0.28, 0.5], [0.72, 0.5], [0.28, 0.78], [0.72, 0.78]],
 };
 
-// Bone-white face with dark pips reads as "physical die" on the dark theme.
+// Carved bone/stone die (Prompt 4): heavy dark outline, bone face, high-
+// contrast pips. Value readability is the top priority — plain pips, no
+// decorative faces.
 const STATE_STYLE = {
-  normal:  { fill: 0xf2ead8, border: 0x9a8f78, pip: 0x2b2b33 },
-  hover:   { fill: 0xffffff, border: 0xd8d0bd, pip: 0x2b2b33 },
-  drag:    { fill: 0xffffff, border: C.yellow, pip: 0x2b2b33 },
-  kept:    { fill: 0xfff3c4, border: C.yellow, pip: 0x6b5900 },
-  staged:  { fill: 0xdcebff, border: C.blue,   pip: 0x1e3a5f },
-  valid:   { fill: 0xd9ffd9, border: C.green,  pip: 0x14521f },
-  invalid: { fill: 0xffd9cf, border: C.red,    pip: 0x5f1a12 },
-  dim:     { fill: 0x3a3350, border: 0x2b2444, pip: 0x6a5f8a },
+  normal:  { fill: 0xe6d9bd, border: 0x46361f, pip: 0x33281a },
+  hover:   { fill: 0xf0e4c8, border: 0x6b573c, pip: 0x33281a },
+  drag:    { fill: 0xf0e4c8, border: C.yellow, pip: 0x33281a },
+  kept:    { fill: 0xeed9a4, border: C.yellow, pip: 0x5c4a1a },
+  staged:  { fill: 0xcfdde4, border: C.blue,   pip: 0x2e4456 },
+  valid:   { fill: 0xd3e8b0, border: C.green,  pip: 0x2e5c1a },
+  invalid: { fill: 0xecd0c0, border: C.red,    pip: 0x5f1a12 },
+  dim:     { fill: 0x3a3226, border: 0x2b2317, pip: 0x6e5f49 },
 };
 
 export function makeDie({
@@ -57,11 +59,11 @@ export function makeDie({
 
   function paint() {
     const s = STATE_STYLE[state] ?? STATE_STYLE.normal;
-    const r = Math.max(4, size * 0.18);
+    const r = Math.max(4, size * 0.2);
     bg.clear();
     bg.roundRect(0, 0, size, size, r).fill(s.fill);
     bg.roundRect(0, 0, size, size, r).stroke({
-      width: state === "normal" ? 1.5 : 2.5,
+      width: state === "normal" ? 2 : 3,
       color: s.border,
     });
     const pr = size * (val >= 4 ? 0.075 : 0.09);
