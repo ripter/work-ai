@@ -629,14 +629,23 @@ images, so pixel brightness maps were used).
   position: `.rect(CARD_X, CARD_Y, CARD_W, ART_BANNER_H)`. Verified: the
   banner now fills the full 96px band top-to-bottom (all 12 pixel rows have
   content), and non-art cards are unaffected.
-- `src/ui/artwork.js` (icon redo) — the old icons used thin ~1.5px outlines
-  plus small multi-part shapes in dark fills, which dissolved into mud at
-  12-14px. Redid all three as ONE bold solid-color silhouette each (no thin
-  outline, high contrast vs the dark panels, shape fills the box):
-  Food = drumstick (meat ball + bone + two knobs, warm orange 0xe0863f),
-  Tools = stone axe (blade + handle, light gray 0xb3aa9d), Population =
-  person (head + body, bone 0xe6d9bd). Verified at 60px (shapes read clearly)
-  and in-context at 12-14px.
+- `src/ui/artwork.js` (icon redo) — TWO compounding problems. (a) Design: the
+  old icons used thin ~1.5px outlines + small multi-part shapes in dark
+  fills, which dissolved into mud at 12-14px. (b) **A real Pixi v8 bug:
+  `g.poly([[x,y],[x,y],…])` (nested arrays) renders NOTHING in this build.**
+  Polygons must be PointData objects `{x,y}` (or `moveTo/lineTo`). That is
+  why the old Tools (a teardrop poly) "looked like nothing" and the old
+  Person body (a poly) never drew — only the non-poly parts (circle head,
+  club line) showed. Confirmed with an isolated A/B test: `poly([[…]])` =
+  invisible, `poly([{x,y}…])` and `moveTo/lineTo` = visible.
+  Redid all three as ONE bold solid-color silhouette each (no thin outline,
+  high contrast, distinct color AND orientation so they can't be confused):
+  Food = fish (horizontal body + tail + eye, warm orange 0xe0863f),
+  Tools = stone axe (wide blade + thick handle, light stone 0xd0c7b5),
+  Population = person (head + body, bone 0xe6d9bd). Fish replaced the
+  drumstick (maintainer: drumstick was a bad choice and read like the
+  person). Verified at 100px on a clean backdrop (all three shapes legible
+  and distinct) and in-context at 12-14px.
 
 **Verification.**
 ```sh
@@ -645,7 +654,8 @@ make build            # clean
 # CDP pixel-brightness maps (headless Chrome, forced mammoth card):
 #   - mammoth banner band (470x96): all 12 rows populated (was top 6 only)
 #   - rock-quarry (no art): plain header, slots intact
-#   - resource icons rendered at 60px: drumstick / axe / person all legible
+#   - poly A/B test: poly([[x,y]]) invisible; poly([{x,y}]) + moveTo/lineTo visible
+#   - icons at 100px on clean backdrop: fish / axe / person all legible+distinct
 ```
 
 **Notes.**
@@ -655,3 +665,7 @@ make build            # clean
   actual pixels, not just the scene graph.
 - `LOG.md` "Step 9" (maintainer) independently flags the same icon problem;
   left `LOG.md` untouched.
+- **Pixi v8 gotcha worth remembering:** `graphics.poly()` silently drops
+  nested-array points (`[[x,y],…]`). Use `{x,y}` objects or
+  `moveTo/lineTo/closePath`. Any future vector art with polygons should use
+  the working form (the icons now have a `P(x,y)` point helper for this).

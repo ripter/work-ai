@@ -58,11 +58,11 @@ export function bannerSize(id) {
 //
 // Design rule for this size: ONE bold solid-color silhouette per icon, no
 // thin outlines (they dissolve into mud at 12px), high contrast against the
-// dark panels, and the shape fills most of its box. Distinct colors keep the
-// three resources readable at a glance.
-const ICON_FOOD = 0xe0863f; // warm meat orange
-const ICON_TOOLS = 0xb3aa9d; // light stone gray
-const ICON_POP = 0xe6d9bd; // bone white
+// dark panels, and the shape fills most of its box. Distinct colors and
+// distinct orientations keep the three resources readable at a glance.
+const ICON_FOOD = 0xe0863f; // warm orange (fish)
+const ICON_TOOLS = 0xd0c7b5; // light stone (axe)
+const ICON_POP = 0xe6d9bd; // bone white (person)
 
 // First resource kind a reward touches (for a small leading icon).
 export function rewardKind(reward) {
@@ -79,23 +79,26 @@ export function rewardKind(reward) {
 export function resourceIcon(kind, size) {
   const s = size;
   const g = new Graphics();
+  // NOTE: in this Pixi v8 build, g.poly([[x,y],...]) (nested arrays) renders
+  // NOTHING. Polygons must be PointData objects {x,y} (or moveTo/lineTo).
+  const P = (x, y) => ({ x, y });
   if (kind === "food") {
-    // Drumstick: meat ball on top, bone with two knobs below — one solid color.
+    // Fish: horizontal body + triangular tail + a small dark eye. Reads as
+    // "food" at 12px and is unmistakably different from the person icon.
     const c = ICON_FOOD;
-    g.circle(0.5 * s, 0.34 * s, 0.3 * s).fill(c);
-    g.roundRect(0.41 * s, 0.5 * s, 0.18 * s, 0.34 * s, 0.09 * s).fill(c);
-    g.circle(0.37 * s, 0.86 * s, 0.13 * s).fill(c);
-    g.circle(0.63 * s, 0.86 * s, 0.13 * s).fill(c);
+    g.ellipse(0.42 * s, 0.5 * s, 0.34 * s, 0.25 * s).fill(c);
+    g.poly([P(0.66 * s, 0.5 * s), P(0.95 * s, 0.27 * s), P(0.95 * s, 0.73 * s)]).fill(c);
+    g.circle(0.26 * s, 0.44 * s, 0.055 * s).fill(0x2a1c10);
   } else if (kind === "tools") {
-    // Stone axe: wide blade on top, short handle below — one solid color.
+    // Stone axe: a wide, chunky blade on top + a thick handle below.
     const c = ICON_TOOLS;
     g.poly([
-      [0.18 * s, 0.12 * s],
-      [0.82 * s, 0.12 * s],
-      [0.62 * s, 0.5 * s],
-      [0.38 * s, 0.5 * s],
+      P(0.08 * s, 0.1 * s),
+      P(0.92 * s, 0.1 * s),
+      P(0.68 * s, 0.52 * s),
+      P(0.32 * s, 0.52 * s),
     ]).fill(c);
-    g.roundRect(0.43 * s, 0.46 * s, 0.14 * s, 0.42 * s, 0.06 * s).fill(c);
+    g.roundRect(0.42 * s, 0.48 * s, 0.16 * s, 0.46 * s, 0.06 * s).fill(c);
   } else if (kind === "population") {
     // Person: round head on top, rounded body below — one solid color.
     const c = ICON_POP;
