@@ -153,6 +153,9 @@ Saved as session11.json
 ## Step 10 - MORE CARDS
 Things are looking good and it's kinda fun to play. Let's add more cards and images now.
 
+First round of images kind of sucked. nothing was really usable.
+It took a few more rounds to get something that was sorta acceptable. I more accepted it because I'm running out of time, not because I love them.
+
 
 
 
