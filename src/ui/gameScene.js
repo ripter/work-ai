@@ -45,6 +45,10 @@ import {
   rewardKind,
   ART_BANNER_H,
   artworkDebug,
+  tribeBadge,
+  backgroundTexture,
+  backgroundState,
+  onBackgroundReady,
 } from "./artwork.js";
 import { W, H, C, sleep, txt, place, panel, button, hitRect, destroyAll } from "./uiKit.js";
 
@@ -92,6 +96,20 @@ const rtxt = (s, size, color, extra = {}) => txt(s, size, color, { anchor: 1, ..
 export function buildGameScene(app, ctx, game, onNewGame) {
   const scene = new Container();
   scene.addChild(new Graphics().rect(0, 0, W, H).fill(C.bg));
+  // Generated cave-wall backdrop (Prompt 5): cover-fitted over the flat base
+  // once it decodes; the flat color shows through until then (and on error).
+  const bgSprite = new Sprite();
+  scene.addChild(bgSprite);
+  const fitBg = () => {
+    const t = backgroundTexture();
+    const st = backgroundState();
+    if (!t || !st.w) return;
+    bgSprite.texture = t;
+    const s = Math.max(W / st.w, H / st.h);
+    bgSprite.scale.set(s);
+  };
+  onBackgroundReady(fitBg);
+  fitBg();
   const dyn = new Container();
   const diceLayer = new Container();
   const fxLayer = new Container();
@@ -838,9 +856,9 @@ export function buildGameScene(app, ctx, game, onNewGame) {
           .fill(bg)
           .stroke({ width: borderW, color: border })
       );
-      dyn.addChild(
-        new Graphics().rect(RIGHT_X + 14, ty + 9, 14, 14).fill(t.eliminated ? 0x4a4460 : t.color)
-      );
+      const badge = tribeBadge(t.id, t.eliminated ? 0x4a4460 : t.color, 18);
+      badge.position.set(RIGHT_X + 12, ty + 7);
+      dyn.addChild(badge);
 
       const orderPos = game.claimOrder.indexOf(t.id);
       const orderTxt =

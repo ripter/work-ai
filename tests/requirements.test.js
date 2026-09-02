@@ -28,6 +28,12 @@ const R = {
   exact: (values) => ({ type: "exactValues", values }),
   contains: (value, count) => ({ type: "mustContain", value, count: count ?? 1 }),
   middle: (count, value) => ({ type: "middleIs", count, value }),
+  // Prompt 5 new types
+  range: (min, max) => ({ type: "range", min, max }),
+  above: (value, count) => ({ type: "countAbove", value, count }),
+  below: (value, count) => ({ type: "countBelow", value, count }),
+  split: (odd, even) => ({ type: "oddEvenSplit", odd, even }),
+  exactly: (count) => ({ type: "exactlyKind", count }),
 };
 
 test("pair", () => {
@@ -103,6 +109,77 @@ test("middleIs: unusual pattern (3 dice, middle must be 5)", () => {
   assert.equal(checkRequirement([5, 6, 6], R.middle(3, 5)), false); // sorted [5,6,6], middle 6
   assert.equal(checkRequirement([1, 5], R.middle(3, 5)), false); // wrong count
   assert.equal(checkRequirement([1, 5, 6, 2], R.middle(3, 5)), false); // wrong count
+});
+
+// ---------------- Prompt 5: new requirement types ----------------
+
+test("range: all submitted dice within [min, max]", () => {
+  assert.equal(checkRequirement([3, 4, 5], R.range(3, 5)), true);
+  assert.equal(checkRequirement([5, 5, 5], R.range(3, 5)), true); // duplicates fine
+  assert.equal(checkRequirement([2, 3, 4], R.range(3, 5)), false); // 2 below min
+  assert.equal(checkRequirement([3, 4, 6], R.range(3, 5)), false); // 6 above max
+  assert.equal(checkRequirement([1, 6], R.range(3, 5)), false); // both out
+});
+
+test("countAbove: exactly N dice strictly above the threshold", () => {
+  assert.equal(checkRequirement([4, 5, 1], R.above(3, 2)), true); // 4,5 above 3
+  assert.equal(checkRequirement([4, 5, 6], R.above(3, 2)), false); // 3 above
+  assert.equal(checkRequirement([4, 2, 1], R.above(3, 2)), false); // only 1 above
+  assert.equal(checkRequirement([3, 3, 3], R.above(3, 2)), false); // 3 is not above 3
+  assert.equal(checkRequirement([6, 6, 1, 1, 1], R.above(5, 2)), true); // exactly two 6s
+});
+
+test("countBelow: exactly N dice strictly below the threshold", () => {
+  assert.equal(checkRequirement([1, 2, 5], R.below(3, 2)), true); // 1,2 below 3
+  assert.equal(checkRequirement([1, 2, 3], R.below(3, 2)), true); // 3 is not below 3
+  assert.equal(checkRequirement([1, 1, 1], R.below(3, 2)), false); // 3 below
+  assert.equal(checkRequirement([2, 4, 6], R.below(3, 2)), false); // only 1 below
+});
+
+test("oddEvenSplit: exact odd/even composition", () => {
+  assert.equal(checkRequirement([1, 2, 4, 5], R.split(2, 2)), true);
+  assert.equal(checkRequirement([1, 3, 4, 6], R.split(2, 2)), true);
+  assert.equal(checkRequirement([1, 3, 5, 6], R.split(2, 2)), false); // 3 odd + 1 even
+  assert.equal(checkRequirement([2, 4, 6], R.split(2, 2)), false); // 0 odd + 3 even
+  assert.equal(checkRequirement([1, 2, 3], R.split(2, 1)), true); // 3-dice variant
+});
+
+test("exactlyKind: largest multiplicity is EXACTLY count", () => {
+  assert.equal(checkRequirement([2, 2, 5], R.exactly(2)), true); // a pair
+  assert.equal(checkRequirement([2, 2, 2], R.exactly(2)), false); // three, not a pair
+  assert.equal(checkRequirement([2, 2], R.exactly(2)), true); // 2 dice, both matching
+  assert.equal(checkRequirement([2, 5], R.exactly(2)), false); // 2 dice, no match
+  assert.equal(checkRequirement([2, 2, 2, 5], R.exactly(3)), true); // exactly three
+  assert.equal(checkRequirement([2, 2, 2, 2], R.exactly(3)), false); // four, not three
+  assert.equal(checkRequirement([2, 5, 6], R.exactly(2)), false); // no pair at all
+});
+
+test("new types respect diceRequired (no cheating with fewer dice)", () => {
+  const rangeSlot = { id: "rng", diceRequired: 4, requirement: [R.range(3, 5)] };
+  assert.equal(checkSlot([4, 4], rangeSlot), false); // 2 dice in range is not enough
+  assert.equal(checkSlot([4, 4, 4, 4], rangeSlot), true);
+  const aboveSlot = { id: "abo", diceRequired: 3, requirement: [R.above(3, 2)] };
+  assert.equal(checkSlot([4, 5], aboveSlot), false); // only 2 dice submitted
+  assert.equal(checkSlot([4, 5, 1], aboveSlot), true);
+  const splitSlot = { id: "spl", diceRequired: 4, requirement: [R.split(2, 2)] };
+  assert.equal(checkSlot([1, 2, 4, 5], splitSlot), true);
+  assert.equal(checkSlot([1, 2, 4], splitSlot), false); // 3 dice
+  const kindSlot = { id: "exk", diceRequired: 3, requirement: [R.exactly(2)] };
+  assert.equal(checkSlot([2, 2], kindSlot), false); // pair but wrong count
+  assert.equal(checkSlot([2, 2, 5], kindSlot), true);
+});
+
+test("new types have concise descriptions", () => {
+  assert.equal(describeSlot({ id: "a", diceRequired: 4, requirement: [R.range(3, 5)] }), "[4 dice] All dice 3-5");
+  assert.equal(describeSlot({ id: "b", diceRequired: 3, requirement: [R.above(3, 2)] }), "[3 dice] Exactly 2 dice above 3");
+  assert.equal(describeSlot({ id: "c", diceRequired: 3, requirement: [R.below(3, 2)] }), "[3 dice] Exactly 2 dice below 3");
+  assert.equal(describeSlot({ id: "d", diceRequired: 4, requirement: [R.split(2, 2)] }), "[4 dice] 2 odd + 2 even");
+  assert.equal(describeSlot({ id: "e", diceRequired: 3, requirement: [R.exactly(2)] }), "[3 dice] Exactly a pair (no three)");
+  // AND-combined
+  assert.equal(
+    describeSlot({ id: "f", diceRequired: 3, requirement: [R.odd(), R.atMost(10)] }),
+    "[3 dice] All odd dice AND Sum <= 10"
+  );
 });
 
 test("checkSlot: requirement arrays combine with AND", () => {

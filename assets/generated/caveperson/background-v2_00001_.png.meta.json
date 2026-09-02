@@ -1,0 +1,40 @@
+{
+  "nodes": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "text": "bold graphic illustration, prehistoric graphic novel style, heavy confident black ink outlines, flat matte painted colors, simplified bold shapes, very dark cave wall backdrop, rough layered stone texture with visible cracks and strata filling the entire frame, warm amber glow rising from the lower center, strong dark vignette at the edges, low contrast empty scene, no characters, no people, no animals, no objects, no light sources"
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "text": "photorealistic, photograph, 3d render, cgi, glossy, shiny, anime, manga, cartoon, cute, chibi, clip art, sticker, text, words, letters, numbers, typography, watermark, signature, logo, user interface, ui, buttons, menu, frame, border, multiple frames, busy, cluttered, excessive detail, noise, grainy, blurry, low quality, deformed, malformed, extra limbs, extra arms, extra legs, extra fingers, bad anatomy, heavy dark shadows, gloomy, muddy colors, generic fantasy art, video game splash art, anachronistic, modern objects, realistic, cinematic, bright, high contrast, centered subject, visible light source"
+    },
+    "4": {
+      "class_type": "EmptyLatentImage",
+      "width": 1024,
+      "height": 640
+    },
+    "5": {
+      "class_type": "KSampler",
+      "seed": 2801,
+      "steps": 25,
+      "cfg": 6.0,
+      "sampler": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0
+    },
+    "7": {
+      "class_type": "SaveImage",
+      "filename_prefix": "caveperson/background-v2"
+    }
+  },
+  "workflow_file": "comfyui/workflows/background-v2.json",
+  "generated_at": "2026-09-02T12:34:05+00:00",
+  "seed": 2801,
+  "prompt_id": "5675c693-20ba-480f-8266-d879c2e0c71e",
+  "output_node": "7",
+  "comfyui_filename": "background-v2_00001_.png"
+}

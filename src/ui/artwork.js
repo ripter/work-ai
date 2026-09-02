@@ -8,6 +8,14 @@
 
 import { Container, Graphics, Texture } from "pixi.js";
 import mammothHuntBanner from "../../assets/final/mammoth-hunt-banner.png";
+import riverFisheryBanner from "../../assets/final/river-fishery-banner.png";
+import droughtBanner from "../../assets/final/drought-banner.png";
+import greatMigrationBanner from "../../assets/final/great-migration-banner.png";
+import spiritCaveBanner from "../../assets/final/spirit-cave-banner.png";
+import flintRoadBanner from "../../assets/final/flint-road-banner.png";
+import raidingPartyBanner from "../../assets/final/raiding-party-banner.png";
+import standingStonesBanner from "../../assets/final/standing-stones-banner.png";
+import sceneBackground from "../../assets/final/background.png";
 
 // Height of the banner art band at the top of an Event Card.
 export const ART_BANNER_H = 96;
@@ -21,6 +29,13 @@ const bannerDims = new Map(); // art id -> { w, h } natural image pixels
 const bannerState = new Map(); // art id -> "loading" | "ready" | "error: ..."
 const BANNERS = {
   "mammoth-hunt": mammothHuntBanner,
+  "river-fishery": riverFisheryBanner,
+  "drought": droughtBanner,
+  "great-migration": greatMigrationBanner,
+  "spirit-cave": spiritCaveBanner,
+  "flint-road": flintRoadBanner,
+  "raiding-party": raidingPartyBanner,
+  "standing-stones": standingStonesBanner,
 };
 
 for (const [id, url] of Object.entries(BANNERS)) {
@@ -41,6 +56,51 @@ for (const [id, url] of Object.entries(BANNERS)) {
   };
   img.onerror = () => bannerState.set(id, "error: image load failed");
   img.src = url;
+}
+
+// Scene background (Prompt 5): a single generated cave-wall backdrop that sits
+// behind the whole play area. Loaded like the banners (plain Image predecode)
+// and exposed as a ready-only texture; the scene falls back to its flat color
+// until it decodes.
+const bgState = { state: "loading", tex: null, w: 0, h: 0 };
+const bgReadyCbs = [];
+{
+  const img = new Image();
+  img.decoding = "async";
+  img.onload = () => {
+    try {
+      bgState.w = img.width;
+      bgState.h = img.height;
+      bgState.tex = Texture.from(img);
+      bgState.state = "ready";
+      for (const cb of bgReadyCbs.splice(0)) cb(bgState.tex);
+    } catch (e) {
+      bgState.state = "error: " + e.message;
+    }
+  };
+  img.onerror = () => {
+    bgState.state = "error: image load failed";
+  };
+  img.src = sceneBackground;
+}
+
+export function backgroundTexture() {
+  return bgState.tex;
+}
+
+export function backgroundState() {
+  return bgState;
+}
+
+// Register a one-shot callback for when the background texture decodes. If it
+// is already ready the callback fires immediately with the texture.
+export function onBackgroundReady(cb) {
+  if (bgState.tex) {
+    cb(bgState.tex);
+    return;
+  }
+  if (bgState.state.startsWith("error")) return;
+  bgReadyCbs.push(cb);
 }
 
 export function bannerTexture(id) {
@@ -108,6 +168,42 @@ export function resourceIcon(kind, size) {
   return new Container().addChild(g);
 }
 
+// Tribe badge (Prompt 5): one bold solid silhouette per seat, filled with the
+// tribe's color. Replaces the plain color swatch in the tribe rows. Same
+// small-size rules as resourceIcon: chunky shape, no thin outlines, distinct
+// outline per seat so tribes read at a glance.
+export function tribeBadge(seat, color, size) {
+  const s = size;
+  const g = new Graphics();
+  const P = (x, y) => ({ x, y });
+  const c = color;
+  if (seat === 0) {
+    // Spear: a tall vertical diamond.
+    g.poly([P(0.5 * s, 0), P(0.8 * s, 0.5 * s), P(0.5 * s, s), P(0.2 * s, 0.5 * s)]).fill(c);
+  } else if (seat === 1) {
+    // Mountain: two peaks.
+    g.poly([
+      P(0, s),
+      P(0.26 * s, 0.24 * s),
+      P(0.5 * s, 0.6 * s),
+      P(0.74 * s, 0.14 * s),
+      P(s, s),
+    ]).fill(c);
+  } else if (seat === 2) {
+    // Water: a teardrop (pointed top, round belly).
+    g.poly([P(0.5 * s, 0), P(0.8 * s, 0.55 * s), P(0.2 * s, 0.55 * s)]).fill(c);
+    g.circle(0.5 * s, 0.6 * s, 0.3 * s).fill(c);
+  } else {
+    // Sun: a disc with four chunky rays.
+    g.circle(0.5 * s, 0.5 * s, 0.28 * s).fill(c);
+    g.poly([P(0.5 * s, 0), P(0.64 * s, 0.24 * s), P(0.36 * s, 0.24 * s)]).fill(c);
+    g.poly([P(0.5 * s, s), P(0.64 * s, 0.76 * s), P(0.36 * s, 0.76 * s)]).fill(c);
+    g.poly([P(0, 0.5 * s), P(0.24 * s, 0.36 * s), P(0.24 * s, 0.64 * s)]).fill(c);
+    g.poly([P(s, 0.5 * s), P(0.76 * s, 0.36 * s), P(0.76 * s, 0.64 * s)]).fill(c);
+  }
+  return new Container().addChild(g);
+}
+
 // Left-dark -> transparent horizontal gradient, for title readability over
 // banner art. Built once from a canvas (no generated asset needed).
 let scrimTex = null;
@@ -144,5 +240,12 @@ export function artworkDebug() {
       h: d ? d.h : 0,
     };
   }
+  out["background"] = {
+    url: sceneBackground,
+    state: bgState.state,
+    loaded: Boolean(bgState.tex),
+    w: bgState.w,
+    h: bgState.h,
+  };
   return out;
 }

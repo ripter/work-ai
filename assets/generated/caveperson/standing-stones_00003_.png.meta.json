@@ -1,0 +1,57 @@
+{
+  "nodes": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "text": "bold graphic illustration, prehistoric graphic novel style, clean confident outlines, flat matte painted colors with visible painterly texture, bold simplified shapes, strong silhouettes, dramatic dynamic composition with strong perspective, earthy prehistoric color palette of ochre amber burnt sienna bone white and moss green, bright dramatic directional sunlight, raw energetic feel, textured natural environment, minimal clutter, ring of ancient standing stones under a dramatic ochre sky, a low bright full moon high in the center-right sky, one tiny prehistoric figure standing at the center for scale, long dramatic shadows, wide horizontal banner composition, stones large in center-right, quiet open sky in the top left"
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "text": "photorealistic, photograph, 3d render, cgi, glossy, shiny, anime, manga, cartoon, cute, chibi, clip art, sticker, text, words, letters, numbers, typography, watermark, signature, logo, user interface, ui, buttons, menu, frame, border, multiple frames, busy, cluttered, excessive detail, noise, grainy, blurry, low quality, deformed, malformed, extra limbs, extra arms, extra legs, extra fingers, bad anatomy, heavy dark shadows, gloomy, muddy colors, generic fantasy art, video game splash art, anachronistic, modern objects"
+    },
+    "4": {
+      "class_type": "EmptyLatentImage",
+      "width": 1024,
+      "height": 512
+    },
+    "5": {
+      "class_type": "KSampler",
+      "seed": 1703,
+      "steps": 25,
+      "cfg": 6.0,
+      "sampler": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0
+    },
+    "7": {
+      "class_type": "SaveImage",
+      "filename_prefix": "caveperson/standing-stones"
+    },
+    "8": {
+      "class_type": "ImageCrop",
+      "inputs": {
+        "image": [
+          "6",
+          0
+        ],
+        "width": 1024,
+        "height": 208,
+        "x": 0,
+        "y": 152
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "filename_prefix": "caveperson/standing-stones-banner"
+    }
+  },
+  "workflow_file": "comfyui/workflows/standing-stones.json",
+  "generated_at": "2026-09-02T03:30:27+00:00",
+  "seed": 1703,
+  "prompt_id": "529bd883-04aa-4d7a-8905-81b28aea4468",
+  "output_node": "7",
+  "comfyui_filename": "standing-stones_00003_.png"
+}

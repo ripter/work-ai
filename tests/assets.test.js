@@ -51,9 +51,25 @@ test("every card with an art field resolves to a real file in assets/final/", ()
   }
 });
 
-test("cards without art are unaffected (no art field)", () => {
+test("the bannered cards carry an art id matching their card id", () => {
+  assert.equal(PROTOTYPE_EVENTS.length, 12, "deck must have 12 cards");
+  // Mammoth Hunt (Prompt 4) + the seven Prompt 5 cards ship generated banners.
+  const BANNERED = [
+    "mammoth-hunt",
+    "river-fishery",
+    "drought",
+    "great-migration",
+    "spirit-cave",
+    "flint-road",
+    "raiding-party",
+    "standing-stones",
+  ];
   for (const c of PROTOTYPE_EVENTS) {
-    if (c.id !== "mammoth-hunt") assert.equal(c.art, undefined);
+    if (BANNERED.includes(c.id)) {
+      assert.equal(c.art, c.id, `${c.id} art id should match its card id`);
+    } else {
+      assert.equal(c.art, undefined, `${c.id} should not have an art field yet`);
+    }
   }
 });
 

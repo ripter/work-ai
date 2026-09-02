@@ -1,0 +1,57 @@
+{
+  "nodes": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "text": "bold graphic illustration, prehistoric graphic novel style, heavy confident black ink outlines, flat matte painted colors, simplified bold shapes, strong silhouettes, dramatic dynamic composition, earthy prehistoric color palette of ochre amber burnt sienna bone white and moss green, strong dramatic side lighting, raw energetic feel, textured natural environment, minimal clutter, a prehistoric fisherman standing in a wide shallow river holding a big woven net full of fish up high, fish leaping in the splashing water, the ochre river water fills the lower half of the image, wide horizontal banner composition, fisherman and fish large in the lower center of the frame, quiet sky only in the top third"
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "text": "photorealistic, photograph, 3d render, cgi, glossy, shiny, anime, manga, cartoon, cute, chibi, clip art, sticker, text, words, letters, numbers, typography, watermark, signature, logo, user interface, ui, buttons, menu, frame, border, multiple frames, busy, cluttered, excessive detail, noise, grainy, blurry, low quality, deformed, malformed, extra limbs, extra arms, extra legs, extra fingers, bad anatomy, heavy dark shadows, gloomy, muddy colors, generic fantasy art, video game splash art, anachronistic, modern objects, realistic, cinematic"
+    },
+    "4": {
+      "class_type": "EmptyLatentImage",
+      "width": 1024,
+      "height": 512
+    },
+    "5": {
+      "class_type": "KSampler",
+      "seed": 2103,
+      "steps": 25,
+      "cfg": 6.0,
+      "sampler": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0
+    },
+    "7": {
+      "class_type": "SaveImage",
+      "filename_prefix": "caveperson/river-fishery-v2"
+    },
+    "8": {
+      "class_type": "ImageCrop",
+      "inputs": {
+        "image": [
+          "6",
+          0
+        ],
+        "width": 1024,
+        "height": 208,
+        "x": 0,
+        "y": 152
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "filename_prefix": "caveperson/river-fishery-v2-banner"
+    }
+  },
+  "workflow_file": "comfyui/workflows/river-fishery-v2.json",
+  "generated_at": "2026-09-02T12:27:53+00:00",
+  "seed": 2103,
+  "prompt_id": "dd11dd1a-3492-4243-bc34-4cf0f847e288",
+  "output_node": "7",
+  "comfyui_filename": "river-fishery-v2_00003_.png"
+}

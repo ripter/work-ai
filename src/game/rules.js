@@ -113,6 +113,40 @@ const REQUIREMENTS = {
       v.length === r.count && sortedAsc(v)[Math.floor(r.count / 2)] === r.value,
     describe: (r) => `Middle die must be ${r.value}`,
   },
+  // Prompt 5: all submitted dice fall within [min, max].
+  range: {
+    check: (v, r) => v.every((x) => x >= r.min && x <= r.max),
+    describe: (r) => `All dice ${r.min}-${r.max}`,
+  },
+  // Prompt 5: exactly `count` dice strictly ABOVE `value`.
+  countAbove: {
+    check: (v, r) => v.filter((x) => x > r.value).length === r.count,
+    describe: (r) => `Exactly ${r.count} dice above ${r.value}`,
+  },
+  // Prompt 5: exactly `count` dice strictly BELOW `value`.
+  countBelow: {
+    check: (v, r) => v.filter((x) => x < r.value).length === r.count,
+    describe: (r) => `Exactly ${r.count} dice below ${r.value}`,
+  },
+  // Prompt 5: exactly `odd` odd dice and `even` even dice. (odd + even
+  // should match the slot's diceRequired; the exact-count check enforces
+  // the total separately.)
+  oddEvenSplit: {
+    check: (v, r) =>
+      v.filter((x) => x % 2 === 1).length === r.odd &&
+      v.filter((x) => x % 2 === 0).length === r.even,
+    describe: (r) => `${r.odd} odd + ${r.even} even`,
+  },
+  // Prompt 5: the largest multiplicity is EXACTLY `count` (e.g. a pair
+  // but not three of a kind; four of a kind but not five).
+  exactlyKind: {
+    check: (v, r) => maxCount(v) === r.count,
+    describe: (r) => {
+      if (r.count === 2) return "Exactly a pair (no three)";
+      if (r.count === 3) return "Exactly three of a kind (no four)";
+      return `Exactly ${r.count} of a kind (no more)`;
+    },
+  },
 };
 
 export function checkRequirement(values, req) {

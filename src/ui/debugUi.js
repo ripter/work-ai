@@ -4,10 +4,11 @@
 // scene. A generation counter cancels stale AI pumps when the scene
 // changes.
 
-import { Container, Graphics, Rectangle } from "pixi.js";
+import { Container, Graphics, Rectangle, Sprite } from "pixi.js";
 import { Game } from "../game/game.js";
 import { W, H, C, txt, place, button, destroyAll } from "./uiKit.js";
 import { buildGameScene } from "./gameScene.js";
+import { backgroundTexture, backgroundState, onBackgroundReady } from "./artwork.js";
 
 export function startApp(app) {
   // Pixi v8 only dispatches pointer events when the pointer is over a
@@ -51,6 +52,21 @@ export function startApp(app) {
 function buildSetupScene(onStart) {
   const scene = new Container();
   scene.addChild(new Graphics().rect(0, 0, W, H).fill(C.bg));
+  // Same generated cave-wall backdrop as the game scene (cover-fitted).
+  const bg = new Sprite();
+  scene.addChild(bg);
+  const fitBg = () => {
+    const t = backgroundTexture();
+    const st = backgroundState();
+    if (!t || !st.w) return;
+    bg.texture = t;
+    bg.scale.set(Math.max(W / st.w, H / st.h));
+  };
+  onBackgroundReady(fitBg);
+  fitBg();
+  // The setup text sits directly on the backdrop, so dim it for contrast
+  // (the game scene keeps its dark panels, which already handle contrast).
+  scene.addChild(new Graphics().rect(0, 0, W, H).fill({ color: 0x000000, alpha: 0.42 }));
 
   scene.addChild(place(txt("CavePerson", 44, C.text, { bold: true, anchor: 0.5 }), W / 2, 90));
   scene.addChild(place(txt("core game loop - debug build", 16, C.faint, { anchor: 0.5 }), W / 2, 132));
