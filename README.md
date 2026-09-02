@@ -4,9 +4,13 @@ A competitive prehistoric dice game (Yahtzee-style dice placement) built with
 [PixiJS](https://pixijs.com/) + [Vite](https://vite.dev/) as a static HTML5
 site.
 
+Play it: **https://ripter.github.io/work-ai/**
+
 Built as a work demo of local-AI-assisted development (OpenCode + local
-models, no cloud APIs). The earlier PICO-8 prototype was abandoned; see
-`REPORT.md` for the viability analysis and git history for the old code.
+models, no cloud APIs). `REPORT.md` is the project retrospective — stats and
+notes on what it was like to build this with a local LLM. The earlier PICO-8
+prototype was abandoned; see `PICO8_VS_HTML5.md` for the viability analysis
+and git history for the old code.
 
 ## Requirements
 

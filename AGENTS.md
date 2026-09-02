@@ -4,7 +4,7 @@ Goal: build the CavePerson game demo for work using local AI only (OpenCode +
 local models). No cloud APIs.
 
 The PICO-8 implementation was abandoned in 2026-08; the project was migrated
-to PixiJS/Vite/HTML5. PICO-8 history lives in git and in `REPORT.md`
+to PixiJS/Vite/HTML5. PICO-8 history lives in git and in `PICO8_VS_HTML5.md`
 (the PICO-8 vs HTML5 viability report that motivated the migration).
 
 ## Hard rules
@@ -56,7 +56,8 @@ to PixiJS/Vite/HTML5. PICO-8 history lives in git and in `REPORT.md`
 - `AI_DEVLOG.md` — AI-maintained dev log. Append a concise entry per
   significant AI session (what changed, commands run, results, assumptions).
 - `LOG.md` — human log. **Hands off.**
-- `REPORT.md` — historical: PICO-8 vs HTML5 viability analysis.
+- `PICO8_VS_HTML5.md` — historical: PICO-8 vs HTML5 viability analysis.
+- `REPORT.md` — project retrospective: stats and notes on building with a local LLM.
 - `stats/` — exported opencode session logs (`session1.json`, ...).
 - `export-session.sh` — exports the current session log to
   `stats/sessionN.json` (see Commands).
