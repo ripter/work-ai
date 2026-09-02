@@ -11,14 +11,16 @@ Pixi-drawn UI, dice, icons) lives in the same visual family.
 
 ## Where the look comes from
 
-- **Generated art** (ComfyUI, local): the Mammoth Hunt banner. Produced from
-  the shared style block in `comfyui/prompts/STYLE.md`. This is the proof
-  that the direction works in diffusion output.
+- **Generated art** (ComfyUI, local): the Event Card banners (Mammoth Hunt +
+  seven Prompt 5 cards) and the full-scene cave-wall backdrop. All produced
+  from the shared style block in `comfyui/prompts/STYLE.md` (currently the v3
+  block). This is the proof that the direction works in diffusion output.
 - **Pixi vectors** (hand-built, no generation): the dice, the Food/Tools/
-  Population resource icons, panels, buttons, and all framing. These share
-  the art's language — bold silhouettes, flat fills, one heavy outline, bone
-  + stone + ochre. Generated icons were tried and rejected (see
-  `comfyui/prompts/icons.md`); at 12-14px vectors are strictly clearer.
+  Population resource icons, the per-tribe badge emblems, panels, buttons, and
+  all framing. These share the art's language — bold silhouettes, flat fills,
+  one heavy outline, bone + stone + ochre. Generated icons were tried and
+  rejected (see `comfyui/prompts/icons.md`); at 12-18px vectors are strictly
+  clearer.
 
 The split is deliberate: **generate the hero moments, draw the furniture.**
 UI furniture at small sizes must be crisp and cheap; hero art is where
@@ -79,18 +81,34 @@ Carried over into every prompt (see `comfyui/prompts/STYLE.md`):
 
 ## What is shipped today
 
-- `assets/final/mammoth-hunt-banner.png` (1024x208) — the Mammoth Hunt
-  hero banner, drawn on the Event Card behind a left-to-right scrim so the
-  overlaid title stays legible. Source + provenance:
-  `assets/generated/caveperson/mammoth-hunt_00004_.png` + sidecar, produced
-  by `comfyui/workflows/mammoth-hunt.json` (seed 404).
-- Everything else is Pixi-drawn (see `src/ui/artwork.js`, `dieView.js`,
-  `uiKit.js`).
+Eight Event Card banners (1024x208 each), drawn on their Event Card behind a
+left-to-right scrim so the overlaid title stays legible, plus one full-scene
+backdrop. Each card's `art` id resolves to `assets/final/<id>-banner.png`;
+source + provenance (seed, workflow) is in the matching
+`comfyui/prompts/<card>.md` record and the `assets/generated/caveperson/`
+sidecar.
+
+| card | shipped file | selected seed |
+|------|--------------|---------------|
+| Mammoth Hunt | `assets/final/mammoth-hunt-banner.png` | 404 (v1) |
+| River Fishery | `assets/final/river-fishery-banner.png` | 2102 (v3, r2) |
+| Drought | `assets/final/drought-banner.png` | 1203 (v2, r1) |
+| Great Migration | `assets/final/great-migration-banner.png` | 1301 (v2, r1) |
+| Spirit Cave | `assets/final/spirit-cave-banner.png` | 2401 (v3, r2) |
+| Flint Road | `assets/final/flint-road-banner.png` | 2501 (v3, r2) |
+| Raiding Party | `assets/final/raiding-party-banner.png` | 2616 (v3, r4) |
+| Standing Stones | `assets/final/standing-stones-banner.png` | 2701 (v3, r2) |
+| (scene backdrop) | `assets/final/background.png` (1024x640) | 2803 (v3, r2) |
+
+Everything else is Pixi-drawn (see `src/ui/artwork.js`, `dieView.js`,
+`uiKit.js`) — including the per-tribe badge emblems and the resource icons.
 
 ## What's deliberately NOT done yet
 
-- No generated art for the other Event Cards (Rock Quarry, Trading Post,
-  Shaman Rite, Ambush, …). Mammoth Hunt is the single proof of direction;
-  the rest stay on the plain header until the maintainer confirms the look.
+- No generated banners for four of the original cards (Rock Quarry, Trading
+  Post, Shaman's Rite, Ambush). They stay on the plain header layout until the
+  maintainer wants the full 12-card set arted. (Mammoth Hunt was the original
+  proof of direction; Prompt 5 arted the seven new cards.)
 - No generated character portraits, no background parallax, no animated
-  art. The direction is proven at the banner level first.
+  art. The generated backdrop is a single static texture, cover-fitted behind
+  the panels.

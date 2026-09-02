@@ -669,3 +669,92 @@ make build            # clean
   nested-array points (`[[x,y],…]`). Use `{x,y}` objects or
   `moveTo/lineTo/closePath`. Any future vector art with polygons should use
   the working form (the icons now have a `P(x,y)` point helper for this).
+
+## 2026-09-02 — Prompt 5: expand deck 5 → 12 cards + complete the visual asset pass (7 banners, scene backdrop, tribe badges)
+
+**What happened.** Two-part prompt. (1) Mechanics: grow the Event Card deck
+from 5 to 12 cards and add the requirement types the new cards needed. (2)
+Visuals: art the seven new cards, generate a full-scene cave-wall backdrop,
+and add the remaining vector touches (per-tribe badges, setup-screen
+backdrop). All art went through the established local ComfyUI pipeline with
+the maintainer selecting every candidate from contact sheets.
+
+**Changes made.**
+- `src/game/rules.js` — five new slot requirement types: `range` (all dice
+  within min..max), `countAbove` (≥N dice strictly above a value),
+  `countBelow` (≥N dice strictly below a value), `oddEvenSplit` (exact
+  odd/even split), `exactlyKind` (exactly N of a kind, not "N or more"). All
+  are evaluated over exactly `diceRequired` dice; the AI is unchanged because
+  it works through `legalSubsetsForSlot`.
+- `src/data/events.js` — seven new cards (71 total slots): River Fishery
+  (lowestDie, accessible small Food), Drought (population, scarcity), Great
+  Migration (population, rare Pop), Spirit Cave (highestDie, debuts the new
+  requirement types), Flint Road (tools, Food→Tools transform), Raiding Party
+  (highestTotal, one hard steal), Standing Stones (highestDie, the 4-5-die
+  big-tribe card). Each now carries an `art` id.
+- `tests/deck.test.js` (new) — full structural validation of the 12-card deck
+  (ids, `diceRequired` present, reward shapes, rarity caps, order-rule
+  distribution). `tests/requirements.test.js` — unit tests for the five new
+  types + `describeSlot`. `tests/fullgame.test.js` — the 2-AI fixture seed was
+  re-picked (7 → 2) because the expanded deck changed the outcome.
+  `tests/assets.test.js` — now asserts the 8 bannered cards resolve to real
+  files and the 4 non-bannered cards have no `art`.
+- `src/ui/artwork.js` — registered all 7 new banners in the `BANNERS` map;
+  added the scene backdrop loader (`backgroundTexture`/`backgroundState`/
+  `onBackgroundReady`) and a `tribeBadge(seat,color,size)` vector emblem
+  (spear / mountain / teardrop / sun, one bold silhouette per seat, using the
+  working `P(x,y)` poly form).
+- `src/ui/gameScene.js` — the play-area now draws the generated cave-wall
+  backdrop cover-fitted over the flat `C.bg` base (ready-only, flat fallback);
+  tribe rows use `tribeBadge` instead of the plain color swatch.
+- `src/ui/debugUi.js` — the setup screen also draws the backdrop, with a
+  0.42 dark scrim so the light title/help text keeps contrast.
+- `assets/final/` — 7 new `<card>-banner.png` (1024x208) + `background.png`
+  (1024x640), copied from the maintainer-selected `assets/generated/caveperson/`
+  candidates.
+- `comfyui/` — 8 banner/backdrop workflow JSONs (round 1 v2 block, round 2 v3
+  block, plus raiding-party v3/v4) and one prompt record per asset
+  (`comfyui/prompts/<card>.md`) including every rejection. `STYLE.md` —
+  documented the v3 block (v1 positive wording + v2 anti-slop negatives +
+  `realistic, cinematic`) as the new current.
+- Docs — `GAME_SPEC.md` (5 new requirement types, 12-card deck, UI note),
+  `VISUAL_DIRECTION.md` (shipped-art table, "not done yet" updated).
+
+**Art selection history (maintainer picks from contact sheets).** 48
+generations total. Round 1 (v2 block, 24 gens) selected Drought s1203 and
+Great Migration s1301 and rejected the other six — the v2 positive ("bright
+directional sunlight" + "strong perspective") pushed SD 1.5 toward
+semi-realism ("too realistic, lost all the art quality"). Round 2 (v3 block,
+18 gens) selected River Fishery s2102, Spirit Cave s2401, Flint Road s2501,
+Standing Stones s2701, and the backdrop s2803. Raiding Party needed rounds 3
+and 4 (6 more gens): a lone human figure kept cropping to flat grass/sky, so
+round 4 used a group of large raiders — s2616 shipped. Standing rule learned:
+for human-figure banners use a group or a close-up, never a single small
+figure in a wide landscape.
+
+**Verification.**
+```sh
+npm test                 # 110/110 (was 91/91)
+make build               # clean; all 8 PNGs in dist/assets, refs relative (./)
+node scripts/simulate.mjs  # PASS for aiCount 1 / 2 / 3
+# CDP + pixel checks (headless Chrome against the static preview build):
+#   - all 8 banners: debug.art().rendered === true, state === "ready"
+#   - banner bands: std 38-54 (real art, not a flat panel)
+#   - backdrop corners: textured warm stone, not the flat C.bg (23,18,16)
+#   - tribe badges: seat colors green/red/blue/yellow confirmed by pixel mean
+#   - setup screen: backdrop present; title-band contrast held after scrim
+shasum LOG.md stats/*.json   # identical to the pre-session baseline
+```
+
+**Notes.**
+- `LOG.md` and `stats/*.json` were left untouched (baseline shasums captured
+  before the session and re-verified after). The production build remains a
+  plain static site — the game has no runtime dependency on ComfyUI.
+- The metrics (`comfyui/analyze.py`) are a screening aid, not the oracle: on
+  River Fishery they flagged the coolest candidate as worst but the maintainer
+  shipped it as "least sucky", and on Flint Road they scored all three round-1
+  seeds "good" while the maintainer correctly read them as photorealistic.
+  The maintainer's eye wins.
+- Four of the original cards (Rock Quarry, Trading Post, Shaman's Rite,
+  Ambush) still have no banner — left on the plain header until the
+  maintainer wants the full 12-card set arted.

@@ -65,6 +65,12 @@ Event Cards are drawn from a deck, one per Event.
 The deck is shuffled (Fisher-Yates) before the first draw, and reshuffled and
 re-dealt whenever it is exhausted, so a game can run for many Events.
 
+The current prototype deck contains **12 cards** (see `src/data/events.js`):
+Mammoth Hunt, Rock Quarry, Trading Post, Shaman's Rite, Ambush, River Fishery,
+Drought, Great Migration, Spirit Cave, Flint Road, Raiding Party, and Standing
+Stones. The deck composition is data, not a core rule — cards can be added,
+removed, or re-tuned during playtesting.
+
 ## Dice
 
 Everyone rolls simultaneously.
@@ -176,6 +182,11 @@ They may also include requirements such as:
 * all odd
 * all even
 * particular die values
+* a value range (every die within `min..max`)
+* at least N dice strictly above a value
+* at least N dice strictly below a value
+* exactly N of a kind (exactly, not "N or more")
+* a split of odd vs even dice (e.g. exactly 2 odd and 2 even)
 * unusual patterns
 
 Example:
@@ -327,10 +338,13 @@ change as the game is playtested:
   from "Slot interaction": dice are dragged from the player's tray into a
   slot's dice tray (tentative — nothing is submitted until the player presses
   CLAIM, and dice are not consumed until then), with live valid/invalid
-  feedback on the staged set. Rerolls use click-to-KEEP marking; hostile
-  targets are picked by clicking a highlighted tribe; Night shows a per-tribe
-  feeding summary. Dice are placeholder pip graphics; the layout is a
-  functional 1280x800 desktop build, not final art.
+   feedback on the staged set. Rerolls use click-to-KEEP marking; hostile
+   targets are picked by clicking a highlighted tribe; Night shows a per-tribe
+   feeding summary. Dice are placeholder pip graphics. The layout is a
+   functional 1280x800 desktop build: Event Card banners are generated
+   illustrations (see `VISUAL_DIRECTION.md` and `comfyui/`), a generated
+   cave-wall backdrop fills the play area, tribes are marked with small vector
+   badge emblems, and resource icons are drawn vectors.
 * **Debug hooks.** The page exposes `window.__cp = { game, scene }` for
   inspection/testing, and `?autoplay=N` (N = 1..3) auto-starts a game with N
   AI opponents. Both are development aids and may be removed later.
